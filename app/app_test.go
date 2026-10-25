@@ -697,3 +697,41 @@ func TestAgentFallbackToConfiguredModel(t *testing.T) {
 		t.Fatalf("fallback events info=%v done=%v", sawInfo, sawDone)
 	}
 }
+
+func TestGeminiProviderParsesTextAndTools(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/models/gem-1:streamGenerateContent") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("key") != "k" {
+			t.Errorf("key = %s", r.URL.Query().Get("key"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"text":"Gemini hi"}]}}]}`+"\n\n")
+		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"shell_execute","args":{"command":"echo hi"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":3}}`+"\n\n")
+	}))
+	defer ts.Close()
+	p := &geminiProvider{cfg: &Provider{ID: "g", Kind: "gemini", BaseURL: ts.URL, APIKey: "k"}, http: newProviderHTTP()}
+	var text strings.Builder
+	var call ProviderEvent
+	res, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "gem-1"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ev ProviderEvent) error {
+		switch ev.Kind {
+		case "text":
+			text.WriteString(ev.Text)
+		case "tool_call":
+			call = ev
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text.String() != "Gemini hi" || call.Name != "shell_execute" || !strings.Contains(call.Args, "echo hi") {
+		t.Fatalf("text=%q call=%+v", text.String(), call)
+	}
+	if res.StopReason != "tool_use" || res.Usage.InputTokens != 9 {
+		t.Fatalf("result=%+v", res)
+	}
+}

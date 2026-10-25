@@ -141,6 +141,8 @@ func (s *Server) providerFor(p *Provider) ProviderClient {
 	switch p.Kind {
 	case "anthropic":
 		return &anthropicProvider{cfg: p, http: s.http}
+	case "gemini":
+		return &geminiProvider{cfg: p, http: s.http}
 	case "mock":
 		return &mockProvider{}
 	default:

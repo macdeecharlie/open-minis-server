@@ -149,8 +149,8 @@ func validateConfig(cfg *Config) (*Config, error) {
 	seen := map[string]bool{}
 	modelCount := 0
 	for i, p := range cfg.Providers {
-		if p.Kind != "openai" && p.Kind != "anthropic" && p.Kind != "mock" {
-			return nil, fmt.Errorf("provider %q: kind must be openai, anthropic or mock", p.ID)
+		if p.Kind != "openai" && p.Kind != "anthropic" && p.Kind != "gemini" && p.Kind != "mock" {
+			return nil, fmt.Errorf("provider %q: kind must be openai, anthropic, gemini or mock", p.ID)
 		}
 		if p.Kind != "mock" && p.BaseURL == "" {
 			return nil, fmt.Errorf("provider %q: base_url is required", p.ID)
