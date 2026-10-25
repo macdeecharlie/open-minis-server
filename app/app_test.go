@@ -712,8 +712,8 @@ func TestGeminiProviderParsesTextAndTools(t *testing.T) {
 		if !strings.Contains(r.URL.Path, "/models/gem-1:streamGenerateContent") {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		if r.URL.Query().Get("key") != "k" {
-			t.Errorf("key = %s", r.URL.Query().Get("key"))
+		if r.Header.Get("x-goog-api-key") != "k" {
+			t.Errorf("api key header = %q", r.Header.Get("x-goog-api-key"))
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"text":"Gemini hi"}]}}]}`+"\n\n")

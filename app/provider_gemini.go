@@ -46,8 +46,8 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if base == "" {
 		base = "https://generativelanguage.googleapis.com/v1beta"
 	}
-	reqURL := base + "/models/" + url.PathEscape(req.Model.ID) + ":streamGenerateContent?alt=sse&key=" + url.QueryEscape(p.cfg.APIKey)
-	headers := map[string]string{}
+	reqURL := base + "/models/" + url.PathEscape(req.Model.ID) + ":streamGenerateContent?alt=sse"
+	headers := map[string]string{"x-goog-api-key": p.cfg.APIKey}
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
