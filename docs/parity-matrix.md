@@ -28,14 +28,14 @@ python3 scripts/server_inventory.py
 
 | Scope | Files | Lines | Meaning |
 |---|---:|---:|---|
-| `android` | 2,186 | 865,495 | Delivery target; every row has an owner/status. |
+| `android` | 2,186 | 865,528 | Delivery target; every row has an owner/status. |
 | `ios-reference` | 1,314 | 1,279,362 | Behavioural reference. Out of scope for the Android build, but accounted for. |
 | `dependency` | 4,508 | 1,298,434 | `deps/` including the `ish` and `proot` submodules; not OpenMinis logic. |
 | `shared` | 21 | 8,780 | Cross-platform assets used by the apps. |
 | `project` | 38 | 8,349 | Scripts, CI, docs and repository metadata. |
-| **total** | **8,067** | **3,460,420** | Every file in the checkout, including submodules. |
+| **total** | **8,067** | **3,460,453** | Every file in the checkout, including submodules. |
 
-Android-only snapshot: **2,179 files / 865,154 lines** (tests, resources,
+Android-only snapshot: **2,179 files / 865,187 lines** (tests, resources,
 generated schemas, bundled runtime assets). Seven files (the `server/` bridge,
 `TerminalSessionLike.kt`) are marked `provenance=refactor`; they are additions
 to the fork, not upstream OpenMinis. `unclassified` rows: **0** in both
