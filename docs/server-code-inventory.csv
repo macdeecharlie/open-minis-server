@@ -3,7 +3,7 @@ path,lines,role
 .gitignore,18,server/deployment file
 README.md,215,server/deployment file
 app/admin.go,183,admin config endpoints
-app/agent.go,872,"agent loop, retries, fallback, tool dispatch, replay/steer"
+app/agent.go,873,"agent loop, retries, fallback, tool dispatch, replay/steer"
 app/api_cli.go,595,minis-* CLI API
 app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
@@ -16,7 +16,7 @@ app/context.go,523,"context estimator, compaction, offload, image budget, tool-p
 app/go.mod,5,server/deployment file
 app/go.sum,2,server/deployment file
 app/main.go,88,entrypoint and role dispatch
-app/open-minis-server,50884,server/deployment file
+app/open-minis-server,51180,server/deployment file
 app/prompt.go,174,server-owned prompt assembly
 app/prompt_base.txt,90,server/deployment file
 app/prompt_browser.txt,2,server/deployment file
@@ -112,7 +112,7 @@ docker/sandbox/mcp-cli/lib/utils/deps.py,70,bundled MCP client (from the officia
 docker/sandbox/minis-session-exec,27,sandbox image and deployment
 docs/agent-protocol.md,182,documentation
 docs/architecture.md,123,documentation
-docs/parity-matrix.md,186,documentation
-docs/verification.md,89,documentation
+docs/parity-matrix.md,191,documentation
+docs/verification.md,93,documentation
 scripts/android_inventory.py,338,inventory tooling
 scripts/server_inventory.py,96,inventory tooling
