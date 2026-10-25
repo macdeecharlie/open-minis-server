@@ -41,6 +41,12 @@ The test suite covers:
   `apt-get`, Node, Python, gcc, `proot` absent; PTY command execution verified.
 - Real OpenRouter run with the server-owned prompt returned Debian
   `uname`/`os-release` and confirmed the injected skills fragment.
+- Real OpenRouter run created a Python script that opened
+  `/var/minis/workspace/input.txt` by absolute path inside the script; the
+  script printed the expected content. `pwd` is `/var/minis/workspace`, and
+  `/workspace` exposes only the current session (other sessions are hidden).
+- `mount` inside a command shows the per-session binds for workspace,
+  attachments, offloads, browser and MCP config.
 - A second real run asked for `android-device info` and the server emitted
   `await_client`; posting a simulated device result continued the same run.
 - Server file API: upload → mkdir → rename → raw read → delete → session delete;
@@ -59,6 +65,7 @@ The test suite covers:
   `ab5b668386da52fdc4476a9eb86a68a10daeacecb8453301ed73c25188d706ee`
   (DN `CN=Android Debug`), versionCode 44, versionName 1.16.6.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
+- APK 1.16.7/build 45 has the same stable certificate and a matching digest.
 
 ## Not verified (environment limits)
 

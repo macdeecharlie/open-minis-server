@@ -130,7 +130,11 @@ outputs) are intentionally not part of the accounting.
 - Client tool round-trip (`await_client` → POST result → same SSE continues),
   including a device CLI shell command (`android-device info`).
 - Server PTY terminal verified through Caddy and the server proxy: Debian bash
-  prompt, command echo and real command output.
+  prompt, `pwd` = `/var/minis/workspace`, root uid 0, command output.
+- Every shell/PTY command runs in a private mount namespace with real
+  `/var/minis/{workspace,attachments,offloads,browser,mcp-servers}` binds;
+  scripts that open those paths internally work, and `/workspace` is
+  session-scoped.
 - Run replay verified mid-run and after completion; steering verified with a
   blocked client-tool run.
 - `minis-config` pending/confirm flow verified live; config remains mode 600.
