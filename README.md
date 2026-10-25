@@ -120,6 +120,9 @@ at startup rather than starting with a silent fallback.
 | `DELETE` | `/v1/sessions/{id}` | Delete a session. |
 | `GET` | `/v1/app/releases` | Private GitHub release proxy for the in-app updater. |
 | `GET` | `/v1/app/assets/{id}` | Authenticated APK download proxy. |
+| `POST` | `/v1/admin/provider` | Upsert a provider and restart with it. Authenticated. |
+| `POST` | `/v1/admin/update-token` | Store the private-release GitHub token. Authenticated. |
+| `POST` | `/v1/admin/config` | Replace the whole config and restart. Authenticated. |
 
 The full run protocol is in [`docs/agent-protocol.md`](docs/agent-protocol.md).
 
@@ -129,6 +132,18 @@ The Android updater reads `/v1/app/releases`, which the server fetches from the
 private `update.repo` with a server-side token. Asset URLs are rewritten to the
 server's authenticated proxy. The GitHub token never reaches the APK, and the
 app never needs to know the private repository exists.
+
+The admin endpoints exist so a token or provider key can be provisioned without
+putting it in a shell command or image. Each writes `/data/config.json`
+(mode 600) and exits; the container restart policy applies it. Use the same
+bearer token as every other API call:
+
+```sh
+curl -X POST https://minis.example.com/v1/admin/update-token \
+  -H "Authorization: Bearer $MINIS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"token":"github_pat_..."}'
+```
 
 ## Security notes
 
