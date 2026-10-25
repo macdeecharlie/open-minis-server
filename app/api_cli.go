@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -419,17 +421,125 @@ func (s *Server) handleCLIConfigGet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type pendingConfigChange struct {
+	Field     string
+	Value     string
+	CreatedAt time.Time
+}
+
 func (s *Server) handleCLIConfigSet(w http.ResponseWriter, r *http.Request) {
-	// Config writes change model/provider credentials and must be confirmed by
-	// the user in the app. The app-side confirmation sheet is not exposed to
-	// server-originated calls yet, so fail visibly instead of changing state
-	// silently.
-	writeJSON(w, http.StatusConflict, map[string]any{
-		"ok":    false,
-		"error": "CONFIRMATION_REQUIRED",
-		"message": "Changing server configuration needs the user's approval in the OpenMinis app. " +
-			"Ask the user in chat; do not retry this command.",
+	var req struct {
+		Args []string `json:"args"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	args := req.Args
+	if len(args) < 2 {
+		writeError(w, http.StatusBadRequest, "usage: minis-config set default_model <model-id>")
+		return
+	}
+	field, value := strings.TrimSpace(args[0]), strings.TrimSpace(args[1])
+	if field != "default_model" && field != "defaults.default_model" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"ok":    false,
+			"error": "UNSUPPORTED",
+			"message": "The server currently accepts `default_model` writes through minis-config. " +
+				"Other settings are edited by the user in the app.",
+		})
+		return
+	}
+	if _, _, err := s.cfg.ResolveModel(value); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	token := newID("cfg")
+	s.configMu.Lock()
+	// Drop expired pending changes instead of running a timer.
+	for k, v := range s.pendingConfig {
+		if time.Since(v.CreatedAt) > 10*time.Minute {
+			delete(s.pendingConfig, k)
+		}
+	}
+	s.pendingConfig[token] = pendingConfigChange{Field: "default_model", Value: value, CreatedAt: time.Now()}
+	s.configMu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "pending_confirmation",
+		"token":  token,
+		"change": "default_model → " + value,
+		"message": "Ask the user to approve this change (user_ask), then run " +
+			"`minis-config confirm --token " + token + "` in the next turn. The token expires in 10 minutes.",
 	})
+}
+
+func (s *Server) handleCLIConfigConfirm(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.configMu.Lock()
+	change, ok := s.pendingConfig[req.Token]
+	if ok {
+		delete(s.pendingConfig, req.Token)
+	}
+	s.configMu.Unlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "confirmation token not found or expired")
+		return
+	}
+	if change.Field != "default_model" {
+		writeError(w, http.StatusBadRequest, "unsupported pending change")
+		return
+	}
+	s.cfg.DefaultModel = change.Value
+	if err := s.persistConfig(); err != nil {
+		writeError(w, http.StatusInternalServerError, "apply config: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "default_model": change.Value})
+}
+
+// persistConfig writes the current configuration without restarting. It is
+// used for settings like default_model that the running process can apply
+// immediately; credential changes still go through the admin endpoint.
+func (s *Server) persistConfig() error {
+	if s.configPath == "" {
+		return nil
+	}
+	body, err := json.MarshalIndent(s.cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(s.configPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".config-*.json")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(append(body, '\n')); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, s.configPath)
 }
 
 func parseInt(v string) (int, error) {

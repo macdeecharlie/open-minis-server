@@ -88,7 +88,7 @@ func clientOwnedCall(name string, args json.RawMessage) bool {
 		"/var/minis/attachments", "/var/minis/skills",
 		"/var/minis/browser",
 		"/var/minis/memory", "/var/minis/shared",
-		"/var/minis/mcp-servers", "/var/minis/mounts",
+		"/var/minis/mounts",
 	} {
 		if a.Path == prefix || strings.HasPrefix(a.Path, prefix+"/") {
 			return true
@@ -572,7 +572,7 @@ func usesDeviceCLI(command string) bool {
 func usesDevicePath(command string) bool {
 	for _, prefix := range []string{
 		"/var/minis/attachments", "/var/minis/skills", "/var/minis/browser",
-		"/var/minis/memory", "/var/minis/shared", "/var/minis/mcp-servers",
+		"/var/minis/memory", "/var/minis/shared",
 		"/var/minis/mounts",
 	} {
 		if strings.Contains(command, prefix) {

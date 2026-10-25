@@ -29,6 +29,9 @@ type Server struct {
 	scheduledStore *ScheduledStore
 	scheduler      *Scheduler
 
+	configMu      sync.Mutex
+	pendingConfig map[string]pendingConfigChange
+
 	updateMu    sync.Mutex
 	updateCache map[string]updateCacheEntry
 }
@@ -53,6 +56,7 @@ func NewServer(cfg *Config, store *Store, configPath string) *Server {
 		runs:           map[string]*Run{},
 		updateCache:    map[string]updateCacheEntry{},
 		scheduledStore: scheduledStore,
+		pendingConfig:  map[string]pendingConfigChange{},
 	}
 	s.scheduler = NewScheduler(cfg, s, scheduledStore)
 	return s
@@ -86,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/cli/model-use", s.cliAuth(http.HandlerFunc(s.handleCLIModelUse)))
 	mux.Handle("GET /v1/cli/config", s.cliAuth(http.HandlerFunc(s.handleCLIConfigGet)))
 	mux.Handle("POST /v1/cli/config", s.cliAuth(http.HandlerFunc(s.handleCLIConfigSet)))
+	mux.Handle("POST /v1/cli/config/confirm", s.cliAuth(http.HandlerFunc(s.handleCLIConfigConfirm)))
 	mux.Handle("GET /v1/cli/scheduled", s.cliAuth(http.HandlerFunc(s.handleScheduledList)))
 	mux.Handle("POST /v1/cli/scheduled", s.cliAuth(http.HandlerFunc(s.handleScheduledUpsert)))
 	mux.Handle("DELETE /v1/cli/scheduled/{id}", s.cliAuth(http.HandlerFunc(s.handleScheduledDelete)))

@@ -827,10 +827,13 @@ func TestDeviceCLIRouting(t *testing.T) {
 	if clientOwnedCall("shell_execute", json.RawMessage(`{"command":"uname -a"}`)) {
 		t.Fatal("server shell call was routed to the client")
 	}
-	for _, path := range []string{"/var/minis/memory/GLOBAL.md", "/var/minis/shared/a.txt", "/var/minis/mcp-servers/servers.json", "/var/minis/mounts/x/y"} {
+	for _, path := range []string{"/var/minis/memory/GLOBAL.md", "/var/minis/shared/a.txt", "/var/minis/mounts/x/y"} {
 		if !clientOwnedCall("file_read", json.RawMessage(`{"path":"`+path+`"}`)) {
 			t.Fatalf("device path %s was not routed to the client", path)
 		}
+	}
+	if clientOwnedCall("file_read", json.RawMessage(`{"path":"/var/minis/mcp-servers/servers.json"}`)) {
+		t.Fatal("MCP config should be server-owned")
 	}
 }
 
@@ -1432,5 +1435,60 @@ func TestGlobalMcpConfigIsSharedAcrossSessions(t *testing.T) {
 	}
 	if _, err := b.ReadFile("/var/minis/workspace/mcp-servers/servers.json", 1, 0, 100); err == nil {
 		t.Fatal("global MCP config leaked into the session workspace")
+	}
+}
+
+func TestCLIConfigConfirmation(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	cfg.Sandbox.AgentToken = "sandbox-token"
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	call := func(path string, body any, out any) int {
+		b, _ := json.Marshal(body)
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, bytes.NewReader(b))
+		req.Header.Set("Authorization", "Bearer sandbox-token")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if out != nil && resp.StatusCode < 300 {
+			if err := json.Unmarshal(raw, out); err != nil {
+				t.Fatalf("decode %s: %v (%s)", path, err, raw)
+			}
+		}
+		return resp.StatusCode
+	}
+	var pending struct {
+		Status string `json:"status"`
+		Token  string `json:"token"`
+	}
+	if code := call("/v1/cli/config", map[string]any{"args": []string{"default_model", "mock-1"}}, &pending); code != 200 {
+		t.Fatalf("set HTTP %d", code)
+	}
+	if pending.Status != "pending_confirmation" || pending.Token == "" {
+		t.Fatalf("pending = %+v", pending)
+	}
+	if code := call("/v1/cli/config", map[string]any{"args": []string{"providers", "x"}}, nil); code != 400 {
+		t.Fatalf("unsupported set HTTP %d, want 400", code)
+	}
+	var confirmed map[string]any
+	if code := call("/v1/cli/config/confirm", map[string]any{"token": pending.Token}, &confirmed); code != 200 {
+		t.Fatalf("confirm HTTP %d", code)
+	}
+	if s.cfg.DefaultModel != "mock-1" {
+		t.Fatalf("default model = %q", s.cfg.DefaultModel)
+	}
+	if _, err := os.Stat(cfg.DataDir + "/config.json"); err != nil {
+		t.Fatalf("config was not persisted: %v", err)
+	}
+	// A token is one-shot.
+	if code := call("/v1/cli/config/confirm", map[string]any{"token": pending.Token}, nil); code != 404 {
+		t.Fatalf("reused token HTTP %d, want 404", code)
 	}
 }

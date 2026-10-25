@@ -275,7 +275,8 @@ const configHelp = `Usage: minis-config <command> [options]
 
 Commands:
   get [defaults|providers|models]   Read server configuration (secrets omitted)
-  set ...                           Requires the user's approval in the app
+  set default_model <id>            Propose a change; returns a confirm token
+  confirm --token <token>           Apply a change the user approved
 `
 
 func runConfigCLI(c *cliClient, argv []string) int {
@@ -288,6 +289,21 @@ func runConfigCLI(c *cliClient, argv []string) int {
 	filter := fs.String("filter", "", "filter array fields")
 	page := fs.Int("page", 0, "page number")
 	pageSize := fs.Int("page-size", 0, "page size")
+	confirmToken := fs.String("token", "", "confirmation token")
+	if sub == "confirm" {
+		if done, code := helpOrError(fs, argv, configHelp); done {
+			return code
+		}
+		if *confirmToken == "" {
+			return out.fail("INVALID_ARGS", "--token is required")
+		}
+		var res map[string]any
+		if err := c.do("POST", "/v1/cli/config/confirm", map[string]any{"token": *confirmToken}, &res); err != nil {
+			return out.fail("NOT_FOUND", err.Error())
+		}
+		out.print(res)
+		return 0
+	}
 	if sub == "set" {
 		if len(argv) == 0 || argv[0] == "--help" || argv[0] == "-h" {
 			fmt.Print(configHelp)
@@ -296,7 +312,7 @@ func runConfigCLI(c *cliClient, argv []string) int {
 		var res map[string]any
 		err := c.do("POST", "/v1/cli/config", map[string]any{"args": argv}, &res)
 		if err != nil {
-			return out.fail("CONFIRMATION_REQUIRED", err.Error())
+			return out.fail("CONFIG_ERROR", err.Error())
 		}
 		out.print(res)
 		return 0
