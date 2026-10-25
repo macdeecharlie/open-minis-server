@@ -26,13 +26,12 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		"messages":   msgs,
 		"stream":     true,
 	}
-	if budget := anthropicThinkingBudget(req.Thinking); budget > 0 {
-		if maxTokens <= budget+1024 {
-			maxTokens = budget + 4096
-			body["max_tokens"] = maxTokens
-		}
-		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
-	}
+	// Extended thinking needs signed thinking blocks replayed on every
+	// subsequent turn. The server keeps only text/reasoning_content, not the
+	// signatures, so enabling it here would make the second tool turn fail.
+	// Native Anthropic runs without extended thinking; OpenRouter's
+	// OpenAI-compatible reasoning path is unaffected.
+	_ = maxTokens
 	if strings.TrimSpace(req.System) != "" {
 		// Cache the stable prompt head (identity, tool rules, skills). The
 		// runtime suffix is part of the same block; Anthropic caches the
