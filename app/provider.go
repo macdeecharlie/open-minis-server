@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -207,4 +208,48 @@ func sanitizeProviderHeaderValue(v string) string {
 	// Header values are configuration, never user input; reject CR/LF just in
 	// case a config file was hand-edited badly.
 	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
+}
+
+// providerIdleTimeout bounds silence on an established provider stream. A
+// model that stops sending bytes without closing the connection otherwise
+// hangs a run forever; the watchdog cancels the request context so the run
+// fails visibly and the retry/fallback path can take over.
+var providerIdleTimeout = 10 * time.Minute
+
+type idleReader struct {
+	r        io.ReadCloser
+	cancel   context.CancelFunc
+	timer    *time.Timer
+	mu       sync.Mutex
+	timedOut bool
+}
+
+func newIdleReader(r io.ReadCloser, cancel context.CancelFunc, idle time.Duration) *idleReader {
+	ir := &idleReader{r: r, cancel: cancel}
+	ir.timer = time.AfterFunc(idle, func() {
+		ir.mu.Lock()
+		ir.timedOut = true
+		ir.mu.Unlock()
+		cancel()
+	})
+	return ir
+}
+
+func (r *idleReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	if n > 0 {
+		r.timer.Reset(providerIdleTimeout)
+	}
+	return n, err
+}
+
+func (r *idleReader) Close() error {
+	r.timer.Stop()
+	return r.r.Close()
+}
+
+func (r *idleReader) TimedOut() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.timedOut
 }

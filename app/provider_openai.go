@@ -48,11 +48,14 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
-	resp, err := p.http.doJSON(ctx, "POST", openAIEndpoint(p.cfg.BaseURL), headers, body, true)
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+	resp, err := p.http.doJSON(streamCtx, "POST", openAIEndpoint(p.cfg.BaseURL), headers, body, true)
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	defer resp.Body.Close()
+	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	defer idleBody.Close()
 
 	type callState struct {
 		id        string
@@ -90,7 +93,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		return nil
 	}
 
-	err = readSSE(resp.Body, func(event string, data []byte) error {
+	err = readSSE(idleBody, func(event string, data []byte) error {
 		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 			sawDone = true
 			return nil
@@ -197,6 +200,9 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		return nil
 	})
 	if err != nil {
+		if idleBody.TimedOut() {
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+		}
 		return ProviderResult{}, err
 	}
 	if err := flushCalls(); err != nil {

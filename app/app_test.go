@@ -1556,3 +1556,36 @@ func TestOpenAIRequestParameters(t *testing.T) {
 		t.Fatalf("request sent both token fields: %+v", body)
 	}
 }
+
+func TestProviderStreamIdleTimeout(t *testing.T) {
+	old := providerIdleTimeout
+	providerIdleTimeout = 200 * time.Millisecond
+	defer func() { providerIdleTimeout = old }()
+
+	release := make(chan struct{})
+	defer close(release)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer upstream.Close()
+
+	p := &openAIProvider{cfg: &Provider{ID: "o", Kind: "openai", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	start := time.Now()
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "m"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "idle") {
+		t.Fatalf("err = %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("idle watchdog took too long: %s", time.Since(start))
+	}
+}

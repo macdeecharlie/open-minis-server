@@ -54,11 +54,14 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
-	resp, err := p.http.doJSON(ctx, "POST", anthropicEndpoint(p.cfg.BaseURL), headers, body, true)
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+	resp, err := p.http.doJSON(streamCtx, "POST", anthropicEndpoint(p.cfg.BaseURL), headers, body, true)
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	defer resp.Body.Close()
+	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	defer idleBody.Close()
 
 	type block struct {
 		typ       string
@@ -94,7 +97,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		return nil
 	}
 
-	err = readSSE(resp.Body, func(event string, data []byte) error {
+	err = readSSE(idleBody, func(event string, data []byte) error {
 		var env struct {
 			Type    string `json:"type"`
 			Index   int    `json:"index"`
@@ -199,6 +202,9 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		return nil
 	})
 	if err != nil {
+		if idleBody.TimedOut() {
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+		}
 		return ProviderResult{}, err
 	}
 	if err := flushTools(); err != nil {

@@ -51,16 +51,19 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
-	resp, err := p.http.doJSON(ctx, "POST", reqURL, headers, body, true)
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+	resp, err := p.http.doJSON(streamCtx, "POST", reqURL, headers, body, true)
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	defer resp.Body.Close()
+	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	defer idleBody.Close()
 
 	var usage Usage
 	var finish string
 	toolIndex := 0
-	err = readSSE(resp.Body, func(event string, data []byte) error {
+	err = readSSE(idleBody, func(event string, data []byte) error {
 		var chunk struct {
 			Candidates []struct {
 				Content struct {
@@ -139,6 +142,9 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		return nil
 	})
 	if err != nil {
+		if idleBody.TimedOut() {
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+		}
 		return ProviderResult{}, err
 	}
 	stop := mapGeminiStop(finish)
