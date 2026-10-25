@@ -104,8 +104,15 @@ func (s *Server) sessionMatches(id, title, query string) bool {
 	}
 	for _, m := range msgs {
 		for _, p := range m.Parts {
-			if p.Type == "text" && strings.Contains(strings.ToLower(p.Text), query) {
-				return true
+			switch p.Type {
+			case "text":
+				if strings.Contains(strings.ToLower(p.Text), query) {
+					return true
+				}
+			case "tool_result":
+				if strings.Contains(strings.ToLower(p.Content), query) {
+					return true
+				}
 			}
 		}
 	}
@@ -133,19 +140,26 @@ func (s *Server) handleCLISearch(w http.ResponseWriter, r *http.Request) {
 		var matches []string
 		for _, m := range msgs {
 			for _, p := range m.Parts {
-				if p.Type != "text" || p.Text == "" {
+				text := ""
+				switch p.Type {
+				case "text":
+					text = p.Text
+				case "tool_result":
+					text = p.Content
+				}
+				if text == "" {
 					continue
 				}
-				text := strings.ToLower(p.Text)
+				lower := strings.ToLower(text)
 				all := true
 				for _, kw := range keywords {
-					if !strings.Contains(text, kw) {
+					if !strings.Contains(lower, kw) {
 						all = false
 						break
 					}
 				}
 				if all {
-					matches = append(matches, truncate(p.Text, 300))
+					matches = append(matches, truncate(text, 300))
 					if len(matches) >= 5 {
 						break
 					}
