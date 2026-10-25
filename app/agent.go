@@ -368,9 +368,10 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			"Browser automation, device integrations, memory, skills and user questions are executed by the paired Android client when they appear as tool calls. " +
 			"Do not claim you are on the phone; work in the server's Linux container.\n</server-runtime>"
 	default:
-		// Headless runs (scheduled tasks) and bare API clients get the same
-		// server-owned prompt with no session-specific fragments.
-		system = buildSystemPrompt(nil, workspaceForPrompt)
+		// Bare API clients have no device bridge; do not advertise memory or
+		// Android-only capabilities they cannot use.
+		noMemory := false
+		system = buildSystemPrompt(&PromptContext{MemoryEnabled: &noMemory, Headless: true}, workspaceForPrompt)
 	}
 
 	// Store the user's new prompt exactly once. History is client-owned, so
