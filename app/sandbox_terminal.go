@@ -152,6 +152,80 @@ func (t *terminal) resize(cols, rows int) error {
 	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
+func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, term *terminal, mgr *terminalManager) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	writeEvent := func(name string, v any) bool {
+		b, _ := json.Marshal(v)
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, b); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	if !writeEvent("ready", map[string]any{"id": term.id, "session_id": term.session, "cols": term.cols, "rows": term.rows}) {
+		return
+	}
+	out := make(chan []byte, 256)
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		buf := make([]byte, 32*1024)
+		for {
+			term.mu.Lock()
+			ptmx := term.ptmx
+			term.mu.Unlock()
+			if ptmx == nil {
+				return
+			}
+			n, err := ptmx.Read(buf)
+			if n > 0 {
+				chunk := append([]byte(nil), buf[:n]...)
+				select {
+				case out <- chunk:
+				case <-r.Context().Done():
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case chunk := <-out:
+			if !writeEvent("output", map[string]any{"data": base64.StdEncoding.EncodeToString(chunk)}) {
+				// The client disconnected. Keep the PTY alive so it can
+				// reattach to the same shell instead of losing its state.
+				return
+			}
+		case <-exited:
+			term.close()
+			mgr.remove(term.id)
+			writeEvent("exit", map[string]any{"reason": "process exited"})
+			return
+		case <-ticker.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
 func (a *sandboxAgent) terminalHandler(mgr *terminalManager) http.Handler {
 	return a.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -176,70 +250,7 @@ func (a *sandboxAgent) terminalHandler(mgr *terminalManager) http.Handler {
 			term.close()
 			mgr.remove(term.id)
 		}()
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			writeError(w, http.StatusInternalServerError, "streaming unsupported")
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache, no-transform")
-		w.Header().Set("X-Accel-Buffering", "no")
-		w.WriteHeader(http.StatusOK)
-		flusher.Flush()
-		writeEvent := func(name string, v any) bool {
-			b, _ := json.Marshal(v)
-			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, b); err != nil {
-				return false
-			}
-			flusher.Flush()
-			return true
-		}
-		if !writeEvent("ready", map[string]any{"id": term.id, "session_id": req.SessionID, "cols": term.cols, "rows": term.rows}) {
-			return
-		}
-		out := make(chan []byte, 256)
-		exited := make(chan struct{})
-		go func() {
-			defer close(exited)
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := term.ptmx.Read(buf)
-				if n > 0 {
-					chunk := append([]byte(nil), buf[:n]...)
-					select {
-					case out <- chunk:
-					case <-r.Context().Done():
-						return
-					}
-				}
-				if err != nil {
-					return
-				}
-			}
-		}()
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case chunk, ok := <-out:
-				if !ok {
-					return
-				}
-				if !writeEvent("output", map[string]any{"data": base64.StdEncoding.EncodeToString(chunk)}) {
-					return
-				}
-			case <-exited:
-				writeEvent("exit", map[string]any{"reason": "process exited"})
-				return
-			case <-ticker.C:
-				if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
-					return
-				}
-				flusher.Flush()
-			case <-r.Context().Done():
-				return
-			}
-		}
+		a.streamTerminal(w, r, term, mgr)
 	}))
 }
 
