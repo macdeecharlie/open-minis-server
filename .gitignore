@@ -1,0 +1,11 @@
+# Runtime data (bind-mounted on the VPS)
+data/
+.DS_Store
+
+# Local build output
+app/open-minis-server
+app/*.test
+
+# Local secrets
+*.local.json
+.env

@@ -1,0 +1,318 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+type openAIProvider struct {
+	cfg  *Provider
+	http *providerHTTP
+}
+
+func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
+	msgs, err := openAIMessages(req.Messages)
+	if err != nil {
+		return ProviderResult{}, err
+	}
+	if strings.TrimSpace(req.System) != "" {
+		msgs = append([]map[string]any{{"role": "system", "content": req.System}}, msgs...)
+	}
+	body := map[string]any{
+		"model":      req.Model.ID,
+		"messages":   msgs,
+		"stream":     true,
+		"max_tokens": effectiveMaxTokens(req.Model, req.MaxTokens),
+	}
+	if len(req.Tools) > 0 {
+		body["tools"] = req.Tools
+		body["tool_choice"] = "auto"
+	}
+	if req.Model.SupportsReasoning && strings.TrimSpace(strings.ToUpper(req.Thinking)) != "" && strings.ToUpper(req.Thinking) != "OFF" {
+		body["reasoning_effort"] = strings.ToLower(req.Thinking)
+	}
+	body["stream_options"] = map[string]any{"include_usage": true}
+
+	headers := map[string]string{}
+	if p.cfg.APIKey != "" {
+		headers["Authorization"] = "Bearer " + p.cfg.APIKey
+	}
+	for k, v := range p.cfg.Headers {
+		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
+	}
+	resp, err := p.http.doJSON(ctx, "POST", openAIEndpoint(p.cfg.BaseURL), headers, body, true)
+	if err != nil {
+		return ProviderResult{}, err
+	}
+	defer resp.Body.Close()
+
+	type callState struct {
+		id        string
+		name      string
+		args      strings.Builder
+		started   bool
+		completed bool
+	}
+	calls := map[int]*callState{}
+	finish := ""
+	var usage Usage
+	sawDone := false
+	var textSeen bool
+
+	flushCalls := func() error {
+		indexes := make([]int, 0, len(calls))
+		for idx := range calls {
+			indexes = append(indexes, idx)
+		}
+		sort.Ints(indexes)
+		for _, idx := range indexes {
+			c := calls[idx]
+			if c.completed || c.name == "" {
+				continue
+			}
+			c.completed = true
+			args := strings.TrimSpace(c.args.String())
+			if args == "" {
+				args = "{}"
+			}
+			if err := emit(ProviderEvent{Kind: "tool_call", ID: c.id, Name: c.name, Args: args}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	err = readSSE(resp.Body, func(event string, data []byte) error {
+		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
+			sawDone = true
+			return nil
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					Reasoning        string `json:"reasoning"`
+					ToolCalls        []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Type     string `json:"type"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason *string `json:"finish_reason"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens        int `json:"prompt_tokens"`
+				CompletionTokens    int `json:"completion_tokens"`
+				PromptTokensDetails struct {
+					CachedTokens int `json:"cached_tokens"`
+				} `json:"prompt_tokens_details"`
+				CompletionTokensDetails struct {
+					ReasoningTokens int `json:"reasoning_tokens"`
+				} `json:"completion_tokens_details"`
+			} `json:"usage"`
+			Error *struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(data, &chunk); err != nil {
+			// Some OpenAI-compatible relays send a bare keepalive.
+			if len(bytes.TrimSpace(data)) <= 2 {
+				return nil
+			}
+			return fmt.Errorf("parse provider stream: %w", err)
+		}
+		if chunk.Error != nil && chunk.Error.Message != "" {
+			return fmt.Errorf("provider error: %s", chunk.Error.Message)
+		}
+		if chunk.Usage != nil {
+			usage.InputTokens = chunk.Usage.PromptTokens
+			usage.OutputTokens = chunk.Usage.CompletionTokens
+			usage.CacheReadInputTokens = chunk.Usage.PromptTokensDetails.CachedTokens
+			usage.LatestContextTokens = chunk.Usage.PromptTokens
+			usage.ReasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
+		}
+		for _, choice := range chunk.Choices {
+			d := choice.Delta
+			if d.Content != "" {
+				textSeen = true
+				if err := emit(ProviderEvent{Kind: "text", Text: d.Content}); err != nil {
+					return err
+				}
+			}
+			reasoning := d.ReasoningContent
+			if reasoning == "" {
+				reasoning = d.Reasoning
+			}
+			if reasoning != "" {
+				if err := emit(ProviderEvent{Kind: "thinking", Text: reasoning}); err != nil {
+					return err
+				}
+			}
+			for _, tc := range d.ToolCalls {
+				c := calls[tc.Index]
+				if c == nil {
+					c = &callState{}
+					calls[tc.Index] = c
+				}
+				if tc.ID != "" {
+					c.id = tc.ID
+				}
+				if tc.Function.Name != "" {
+					c.name = tc.Function.Name
+				}
+				if c.id == "" {
+					c.id = fmt.Sprintf("call_%d", tc.Index)
+				}
+				if !c.started && c.name != "" {
+					c.started = true
+					if err := emit(ProviderEvent{Kind: "tool_start", ID: c.id, Name: c.name}); err != nil {
+						return err
+					}
+				}
+				if tc.Function.Arguments != "" {
+					c.args.WriteString(tc.Function.Arguments)
+					if err := emit(ProviderEvent{Kind: "tool_input", ID: c.id, Name: c.name, Args: tc.Function.Arguments}); err != nil {
+						return err
+					}
+				}
+			}
+			if choice.FinishReason != nil && *choice.FinishReason != "" {
+				finish = *choice.FinishReason
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return ProviderResult{}, err
+	}
+	if err := flushCalls(); err != nil {
+		return ProviderResult{}, err
+	}
+	if usage.OutputTokens == 0 && usage.InputTokens == 0 {
+		// Some relays only put usage in a final non-stream chunk.
+	}
+	stop := mapOpenAIStop(finish)
+	if len(calls) > 0 {
+		stop = "tool_use"
+	}
+	if finish == "" && !sawDone && !textSeen && len(calls) == 0 {
+		return ProviderResult{}, fmt.Errorf("provider stream ended without a finish reason")
+	}
+	if stop == "" {
+		stop = "end_turn"
+	}
+	return ProviderResult{StopReason: stop, Usage: usage}, nil
+}
+
+func mapOpenAIStop(s string) string {
+	switch s {
+	case "tool_calls", "function_call":
+		return "tool_use"
+	case "length", "max_tokens":
+		return "max_tokens"
+	case "content_filter", "refusal":
+		return "refusal"
+	case "stop", "end_turn", "":
+		return "end_turn"
+	default:
+		return s
+	}
+}
+
+func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
+	out := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		switch m.Role {
+		case "assistant":
+			text, _ := wireTextAndImages(m)
+			var toolCalls []map[string]any
+			for _, part := range m.Parts {
+				if part.Type != "tool_use" {
+					continue
+				}
+				args := strings.TrimSpace(string(part.Args))
+				if args == "" || args == "null" {
+					args = "{}"
+				}
+				toolCalls = append(toolCalls, map[string]any{
+					"id":   part.ID,
+					"type": "function",
+					"function": map[string]any{
+						"name":      part.Name,
+						"arguments": args,
+					},
+				})
+			}
+			msg := map[string]any{"role": "assistant", "content": text}
+			if len(toolCalls) > 0 {
+				msg["tool_calls"] = toolCalls
+			}
+			if text == "" && len(toolCalls) == 0 {
+				continue
+			}
+			if strings.TrimSpace(m.ReasoningContent) != "" {
+				msg["reasoning_content"] = m.ReasoningContent
+			}
+			out = append(out, msg)
+		case "user":
+			var texts []string
+			var images []WirePart
+			var results []WirePart
+			for _, part := range m.Parts {
+				switch part.Type {
+				case "text":
+					texts = append(texts, part.Text)
+				case "image":
+					images = append(images, part)
+				case "tool_result":
+					results = append(results, part)
+				}
+			}
+			for _, r := range results {
+				content := r.Content
+				if r.IsError && !strings.HasPrefix(strings.TrimSpace(content), "Error") {
+					content = "Error: " + content
+				}
+				out = append(out, map[string]any{
+					"role":         "tool",
+					"tool_call_id": r.ID,
+					"content":      content,
+				})
+			}
+			if len(texts) > 0 || len(images) > 0 {
+				content := strings.Join(texts, "")
+				if len(images) > 0 {
+					parts := []map[string]any{}
+					if content != "" {
+						parts = append(parts, map[string]any{"type": "text", "text": content})
+					}
+					for _, img := range images {
+						parts = append(parts, map[string]any{
+							"type": "image_url",
+							"image_url": map[string]any{
+								"url": "data:" + img.Mime + ";base64," + img.Data,
+							},
+						})
+					}
+					out = append(out, map[string]any{"role": "user", "content": parts})
+				} else {
+					out = append(out, map[string]any{"role": "user", "content": content})
+				}
+			}
+		default:
+			// Ignore unknown roles rather than sending a payload every provider
+			// would reject. The client only sends user/assistant.
+		}
+	}
+	return out, nil
+}

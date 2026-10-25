@@ -1,0 +1,23 @@
+services:
+  open-minis-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: open-minis-server:latest
+    container_name: open-minis-server
+    restart: unless-stopped
+    environment:
+      APP_GIT_REPO: https://github.com/macdeecharlie/open-minis-server.git
+      APP_GIT_BRANCH: main
+      MINIS_CONFIG: /data/config.json
+      MINIS_LISTEN: ":8080"
+    volumes:
+      - ../data:/data
+    networks:
+      - internal
+    expose:
+      - "8080"
+
+networks:
+  internal:
+    external: true

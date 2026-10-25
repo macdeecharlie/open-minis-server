@@ -1,0 +1,33 @@
+{
+  "public_url": "https://minis.example.com",
+  "auth_token": "replace-with-a-long-random-token",
+  "default_model": "deepseek-v4-flash",
+  "providers": [
+    {
+      "id": "deepseek",
+      "kind": "openai",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "context_window": 128000,
+          "max_output_tokens": 8192,
+          "supports_reasoning": true
+        }
+      ]
+    }
+  ],
+  "update": {
+    "repo": "macdeecharlie/open-minis-android",
+    "token_env": "GITHUB_TOKEN",
+    "cache_seconds": 60
+  },
+  "searxng_url": "",
+  "sandbox": {
+    "work_root": "/data/workspaces",
+    "shell_user": "minis",
+    "max_output_bytes": 204800
+  }
+}
