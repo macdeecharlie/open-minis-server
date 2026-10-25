@@ -395,8 +395,8 @@ func TestBuildToolsIncludesClientTools(t *testing.T) {
 	if byName["browser_use"] != "client" || byName["device_ping"] != "client" {
 		t.Fatalf("client tools missing: %+v", byName)
 	}
-	if byName["shell_execute"] != "server" {
-		t.Fatalf("server tool definition not preserved: %+v", byName)
+	if !strings.Contains(byName["shell_execute"], "Debian") {
+		t.Fatalf("server shell description not corrected: %+v", byName)
 	}
 }
 

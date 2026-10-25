@@ -187,10 +187,11 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		system = "You are Minis, a capable AI assistant running on your user's personal OpenMinis server. Be direct, accurate and useful. Use tools when they are needed."
 	}
 	system += "\n\n<server-runtime>\n" +
-		"Shell and file tools run on a remote Linux server. The session workspace is " + sb.Workspace() + ". " +
-		"The client's virtual paths /var/minis/workspace and /var/minis/attachments are mapped into it automatically. " +
+		"Shell and file tools run inside a dedicated full Linux distribution container (Debian), not PRoot/Alpine and not on the phone. " +
+		"The shell runs as root, so distro package management (apt-get/apt) is available; use it when a task needs system tools. " +
+		"The session workspace is " + sb.Workspace() + ". The client's virtual paths /var/minis/workspace and /var/minis/attachments are mapped into it automatically. " +
 		"Browser automation, device integrations, memory, skills and user questions are executed by the paired Android client when they appear as tool calls. " +
-		"Do not claim you are on the phone; work in the server workspace.\n</server-runtime>"
+		"Do not claim you are on the phone; work in the server's Linux container.\n</server-runtime>"
 
 	// Store the user's new prompt exactly once. History is client-owned, so
 	// the server only needs this row for future Web UI session browsing.

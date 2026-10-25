@@ -71,6 +71,13 @@ func (s *Server) buildTools(client []ToolDef) []ToolDef {
 	// tools, so the model sees the same contract on both platforms.
 	for _, name := range []string{"shell_execute", "file_read", "file_write", "file_edit"} {
 		if t, ok := provided[name]; ok {
+			// The server's execution environment is a full Debian container,
+			// not the phone's PRoot/Alpine sandbox. Keep the client's schema
+			// and argument names, but correct the environment description so
+			// the model does not avoid apt or assume PRoot limitations.
+			if name == "shell_execute" {
+				t.Function.Description = "Execute a command in the dedicated full Debian Linux container. The shell runs as root; apt-get/apt are available. The working directory is the session workspace. Use the client's virtual /var/minis/workspace and /var/minis/attachments paths; the sandbox maps them automatically."
+			}
 			out = append(out, t)
 			seen[name] = true
 		} else {
