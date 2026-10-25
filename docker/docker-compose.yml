@@ -58,6 +58,7 @@ services:
       - SYS_ADMIN
     security_opt:
       - no-new-privileges:true
+      - apparmor=unconfined
     mem_limit: 2g
     cpus: "2.0"
     pids_limit: 512
