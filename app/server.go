@@ -61,6 +61,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleDeleteSession)))
 	mux.Handle("GET /v1/status", s.auth(http.HandlerFunc(s.handleStatus)))
 	mux.Handle("POST /v1/admin/config", s.auth(http.HandlerFunc(s.handleAdminConfig)))
+	mux.Handle("POST /v1/admin/provider", s.auth(http.HandlerFunc(s.handleAdminProvider)))
+	mux.Handle("POST /v1/admin/update-token", s.auth(http.HandlerFunc(s.handleAdminUpdateToken)))
 	mux.Handle("GET /v1/app/releases", s.auth(http.HandlerFunc(s.handleAppReleases)))
 	mux.Handle("GET /v1/app/assets/{id}", s.auth(http.HandlerFunc(s.handleAppAsset)))
 	mux.HandleFunc("GET /v1/app/releases/{tag}", s.handleReleasePage)

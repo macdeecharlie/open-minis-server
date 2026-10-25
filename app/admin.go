@@ -49,6 +49,10 @@ func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.writeConfigAndRestart(w, validated)
+}
+
+func (s *Server) writeConfigAndRestart(w http.ResponseWriter, validated *Config) {
 	body, err := json.MarshalIndent(validated, "", "  ")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -99,4 +103,66 @@ func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(400 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+// handleAdminProvider upserts one provider and optionally makes one of its
+// models the default. Existing credentials for other providers are preserved.
+func (s *Server) handleAdminProvider(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Provider     Provider `json:"provider"`
+		DefaultModel string   `json:"default_model"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2*1024*1024))
+	if err := dec.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	next := *s.cfg
+	next.Providers = append([]Provider(nil), s.cfg.Providers...)
+	replaced := false
+	for i := range next.Providers {
+		if next.Providers[i].ID == body.Provider.ID {
+			next.Providers[i] = body.Provider
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		next.Providers = append(next.Providers, body.Provider)
+	}
+	if body.DefaultModel != "" {
+		next.DefaultModel = body.DefaultModel
+	}
+	validated, err := validateConfig(&next)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.writeConfigAndRestart(w, validated)
+}
+
+// handleAdminUpdateToken stores the private-release GitHub token without ever
+// putting it in a shell command or container environment.
+func (s *Server) handleAdminUpdateToken(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024))
+	if err := dec.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	if body.Token == "" {
+		writeError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+	next := *s.cfg
+	next.Update.Token = body.Token
+	next.Update.TokenEnv = ""
+	validated, err := validateConfig(&next)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.writeConfigAndRestart(w, validated)
 }
