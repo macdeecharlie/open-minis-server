@@ -34,16 +34,27 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
 	}
 	if strings.TrimSpace(req.System) != "" {
-		body["system"] = req.System
+		// Cache the stable prompt head (identity, tool rules, skills). The
+		// runtime suffix is part of the same block; Anthropic caches the
+		// longest matching prefix across requests, which is exactly the
+		// Android prompt layout.
+		body["system"] = []map[string]any{{
+			"type": "text", "text": req.System,
+			"cache_control": map[string]any{"type": "ephemeral"},
+		}}
 	}
 	if len(req.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(req.Tools))
-		for _, t := range req.Tools {
-			tools = append(tools, map[string]any{
+		for i, t := range req.Tools {
+			tool := map[string]any{
 				"name":         t.Function.Name,
 				"description":  t.Function.Description,
 				"input_schema": t.Function.Parameters,
-			})
+			}
+			if i == len(req.Tools)-1 {
+				tool["cache_control"] = map[string]any{"type": "ephemeral"}
+			}
+			tools = append(tools, tool)
 		}
 		body["tools"] = tools
 	}
