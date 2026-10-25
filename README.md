@@ -85,6 +85,8 @@ The server is on `minis_net` + `sandbox_net`; the sandbox is only on
 ```sh
 sudo docker network create minis_net
 sudo docker network create --subnet 172.21.0.0/16 minis_sandbox_net
+sudo mkdir -p /opt/open-minis-server/data/sandbox
+sudo chmod 755 /opt/open-minis-server/data/sandbox
 ```
 
 Put a long random value in `/opt/open-minis-server/.env`:
