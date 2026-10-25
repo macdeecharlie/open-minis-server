@@ -346,7 +346,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 
 	tools := s.buildTools(req.Tools)
 	workspaceForPrompt := sb.Workspace()
-	if s.cfg.Sandbox.MountNamespace {
+	if s.cfg.Sandbox.MountNamespace || s.cfg.Sandbox.Mode == "agent" {
 		workspaceForPrompt = "/var/minis/workspace"
 	}
 	system := ""
