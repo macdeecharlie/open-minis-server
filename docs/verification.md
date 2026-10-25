@@ -80,9 +80,9 @@ The test suite covers:
   `ab5b668386da52fdc4476a9eb86a68a10daeacecb8453301ed73c25188d706ee`
   (DN `CN=Android Debug`), versionCode 47, versionName 1.16.9.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
-- APK 1.16.7/build 45 and 1.16.8/build 46 have the same stable certificate and
-  matching digests. 1.16.11/build 49 is the source release in CI at this
-  snapshot (image tool results, signatures, title/compaction parity).
+- APK 1.16.7/build 45, 1.16.8/build 46 and 1.16.9/build 47 have the same stable
+  certificate and matching digests. 1.16.11/build 49 is published; 1.16.12/
+  build 50 (persisted tool-result images) is the source release in CI.
 
 ## Not verified (environment limits)
 

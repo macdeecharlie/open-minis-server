@@ -172,7 +172,12 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
   parts for OpenAI/Gemini, image-bearing tool results, orphan tool-pair repair
   and provider idle timeouts are covered by tests.
 - Helper prompt fix (1.16.10) preserves the full parent brief on the server
-  branch; server helper wrap-up gives the final deliverable round.
+  branch; server helper wrap-up gives the final deliverable round. Tool-result
+  images round-trip from the client to OpenAI/Anthropic/Gemini and are persisted
+  in the local transcript (1.16.12).
+- Server-backed `minis-sessions-cli`, `minis-config`, `minis-model-use` and
+  `minis-mcp-cli` execute in the sandbox; only `android-*`, `minis-open` and
+  `minis-scheduled` go to the device.
 - Tool-loop thresholds are 10 (warn) / 20 (stop), matching the official
   magnitude, so legitimate polling survives.
 - Sandbox CLI tools verified: `minis-sessions-cli list/messages`,
@@ -181,6 +186,6 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - Auxiliary `/v1/chat/completions` translation verified against a native
   Anthropic SSE upstream (streaming and non-streaming).
 - Request image budget and compaction/offload unit-tested.
-- Published: 1.16.9 build 47 (1.16.8 build 46 before it), same stable signing
-  key. Source: 1.16.10 build 48 (helper prompt fix) in CI as this snapshot was
-  written.
+- Published: 1.16.11 build 49 (same stable signing key); 1.16.10 build 48
+  fixed the helper prompt, 1.16.9 build 47 added audio/offload sync. Source:
+  1.16.12 build 50 (persisted tool-result images) in CI at this snapshot.
