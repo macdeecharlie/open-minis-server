@@ -291,7 +291,6 @@ func (s *Server) streamRun(w http.ResponseWriter, r *http.Request, run *Run, aft
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
 	done := make(chan struct{})
 	var writeMu sync.Mutex
 	write := func(format string, args ...any) bool {
@@ -312,6 +311,13 @@ func (s *Server) streamRun(w http.ResponseWriter, r *http.Request, run *Run, aft
 			}
 			return write("id: %d\nevent: %s\ndata: %s\n\n", seq, ev.Name, data)
 		})
+	}()
+	// Do not let the HTTP handler return while the subscriber goroutine may
+	// still be writing to the response. net/http then flushes the connection
+	// from another goroutine, which is a data race (and can corrupt the tail).
+	defer func() {
+		cancel()
+		<-done
 	}()
 	for {
 		select {
