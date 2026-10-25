@@ -54,6 +54,8 @@ services:
     # This is a full distro for the agent, but it is not a host escape hatch:
     # no host mounts beyond its workspace, no Docker socket, no shared network
     # with Caddy or the VPS services.
+    cap_add:
+      - SYS_ADMIN
     security_opt:
       - no-new-privileges:true
     mem_limit: 2g
