@@ -210,6 +210,20 @@ func (c *Config) ModelList() []map[string]any {
 			out = append(out, item)
 		}
 	}
+	// The Android bootstrap treats the first model as the new-chat default.
+	// Keep the configured default first regardless of provider declaration
+	// order, so adding an offline mock provider cannot silently become the
+	// model every fresh install uses.
+	if c.DefaultModel != "" {
+		for i, item := range out {
+			if item["id"] == c.DefaultModel && i > 0 {
+				def := out[i]
+				copy(out[1:i+1], out[0:i])
+				out[0] = def
+				break
+			}
+		}
+	}
 	return out
 }
 
