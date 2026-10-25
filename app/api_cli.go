@@ -191,6 +191,9 @@ func (s *Server) handleCLISessionUpdate(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleCLIModels(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
 	for _, p := range s.cfg.Providers {
+		if p.Kind == "mock" {
+			continue
+		}
 		for _, m := range p.Models {
 			item := map[string]any{
 				"id": m.ID, "name": m.Name, "provider": p.ID,
@@ -369,6 +372,9 @@ func (s *Server) handleCLIConfigGet(w http.ResponseWriter, r *http.Request) {
 	case "providers":
 		out := make([]map[string]any, 0, len(s.cfg.Providers))
 		for _, p := range s.cfg.Providers {
+			if p.Kind == "mock" {
+				continue
+			}
 			item := map[string]any{
 				"id": p.ID, "kind": p.Kind, "base_url": p.BaseURL, "models": p.Models,
 			}

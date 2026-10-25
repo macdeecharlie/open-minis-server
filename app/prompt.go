@@ -149,7 +149,12 @@ func buildSystemPrompt(pc *PromptContext, workspace string) string {
 	appendFragment(pc.DailyMemory)
 
 	tz := strings.TrimSpace(pc.Timezone)
-	if tz == "" {
+	loc := time.UTC
+	if tz != "" {
+		if loaded, err := time.LoadLocation(tz); err == nil {
+			loc = loaded
+		}
+	} else {
 		tz = "UTC"
 	}
 	lang := strings.TrimSpace(pc.Language)
@@ -157,7 +162,7 @@ func buildSystemPrompt(pc *PromptContext, workspace string) string {
 		lang = "en"
 	}
 	out.WriteString("\n\nRuntime context:\n")
-	out.WriteString("- Current date: " + time.Now().Format("2006-01-02") + " (" + tz + ")\n")
+	out.WriteString("- Current date: " + time.Now().In(loc).Format("2006-01-02") + " (" + tz + ")\n")
 	out.WriteString("- Device language: " + lang + "\n")
 	out.WriteString("- minis-model-use models available: " + strconv.Itoa(pc.ModelUseCount) + "\n")
 	out.WriteString("- Execution environment: dedicated Debian 12 container, root shell, workspace " + workspace + " (maps /var/minis/workspace and /var/minis/attachments)")

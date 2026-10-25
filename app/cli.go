@@ -137,7 +137,7 @@ func newFlagSet(name string) (*flag.FlagSet, *cliOutput) {
 func helpOrError(fs *flag.FlagSet, argv []string, help string) (bool, int) {
 	for _, a := range argv {
 		if a == "--help" || a == "-h" || a == "help" {
-			fmt.Println(help)
+			fmt.Print(help)
 			return true, 0
 		}
 	}
@@ -271,7 +271,7 @@ func runConfigCLI(c *cliClient, argv []string) int {
 	fs, out := newFlagSet("minis-config")
 	if sub == "set" {
 		if len(argv) == 0 || argv[0] == "--help" || argv[0] == "-h" {
-			fmt.Println(configHelp)
+			fmt.Print(configHelp)
 			return 0
 		}
 		var res map[string]any

@@ -414,7 +414,9 @@ func TestClientOwnedFilePaths(t *testing.T) {
 		{"file_edit", `{"path":"/var/minis/skills/x/SKILL.md"}`, true},
 		{"file_read", `{"path":"/var/minis/workspace/a.txt"}`, false},
 		{"file_read", `{"path":"/tmp/a.txt"}`, false},
-		{"shell_execute", `{"command":"cat /var/minis/attachments/a"}`, false},
+		{"shell_execute", `{"command":"cat /var/minis/attachments/a"}`, true},
+		{"shell_execute", `{"command":"cat /var/minis/workspace/a"}`, false},
+		{"file_read", `{"path":"/var/minis/offloads/tool_1.txt"}`, false},
 	}
 	for _, c := range cases {
 		if got := clientOwnedCall(c.name, []byte(c.args)); got != c.want {

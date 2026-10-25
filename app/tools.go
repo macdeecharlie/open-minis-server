@@ -86,7 +86,7 @@ func clientOwnedCall(name string, args json.RawMessage) bool {
 	}
 	for _, prefix := range []string{
 		"/var/minis/attachments", "/var/minis/skills",
-		"/var/minis/offloads", "/var/minis/browser",
+		"/var/minis/browser",
 		"/var/minis/memory", "/var/minis/shared",
 		"/var/minis/mcp-servers", "/var/minis/mounts",
 	} {
@@ -545,6 +545,9 @@ func (s *Server) search(ctx context.Context, query string, limit int) (string, e
 // exists on the Android device. It is intentionally lexical: quote-aware
 // splitting plus wrapper stripping, no shell expansion.
 func usesDeviceCLI(command string) bool {
+	if usesDevicePath(command) {
+		return true
+	}
 	for _, segment := range splitShellSegments(command) {
 		words := shellWords(segment)
 		words = stripShellWrappers(words)
@@ -556,6 +559,23 @@ func usesDeviceCLI(command string) bool {
 			base = base[i+1:]
 		}
 		if deviceCLIs[base] {
+			return true
+		}
+	}
+	return false
+}
+
+// devicePaths back directories that live on the phone (memory, skills,
+// mounted SAF folders, browser artifacts, attachments). Shell commands that
+// touch them must run on the device, otherwise the model sees a different
+// filesystem than the file tools and the app UI.
+func usesDevicePath(command string) bool {
+	for _, prefix := range []string{
+		"/var/minis/attachments", "/var/minis/skills", "/var/minis/browser",
+		"/var/minis/memory", "/var/minis/shared", "/var/minis/mcp-servers",
+		"/var/minis/mounts",
+	} {
+		if strings.Contains(command, prefix) {
 			return true
 		}
 	}
