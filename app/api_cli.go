@@ -44,6 +44,11 @@ func (s *Server) handleCLISessions(w http.ResponseWriter, r *http.Request) {
 	}
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	group := strings.TrimSpace(r.URL.Query().Get("group"))
+	if group != "" {
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": []any{}, "note": "server sessions do not have groups"})
+		return
+	}
 	start := strings.TrimSpace(r.URL.Query().Get("start"))
 	end := strings.TrimSpace(r.URL.Query().Get("end"))
 	out := make([]map[string]any, 0, limit)
@@ -64,11 +69,21 @@ func (s *Server) handleCLISessions(w http.ResponseWriter, r *http.Request) {
 		if query != "" && !s.sessionMatches(m.ID, m.Title, query) {
 			continue
 		}
+		status := "idle"
+		s.runsMu.Lock()
+		for _, run := range s.runs {
+			if run.Session == m.ID {
+				status = "running"
+				break
+			}
+		}
+		s.runsMu.Unlock()
 		out = append(out, map[string]any{
 			"session_id":    m.ID,
 			"title":         m.Title,
 			"model":         m.Model,
 			"message_count": m.MessageCount,
+			"status":        status,
 			"started_at":    time.UnixMilli(m.CreatedAt).Format(time.RFC3339),
 			"last_active":   time.UnixMilli(m.UpdatedAt).Format(time.RFC3339),
 		})
@@ -165,6 +180,23 @@ func (s *Server) handleCLISessionMessages(w http.ResponseWriter, r *http.Request
 		return
 	}
 	includeTools := r.URL.Query().Get("tools") == "1"
+	offset, limit := 0, 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offset, _ = parseInt(v)
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, _ = parseInt(v)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(msgs) {
+		offset = len(msgs)
+	}
+	msgs = msgs[offset:]
+	if limit > 0 && limit < len(msgs) {
+		msgs = msgs[:limit]
+	}
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
 		item := map[string]any{"role": m.Role, "at": time.UnixMilli(m.CreatedAt).Format(time.RFC3339)}

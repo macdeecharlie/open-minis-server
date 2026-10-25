@@ -173,13 +173,20 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 	end := fs.String("end", "", "end date YYYY-MM-DD")
 	group := fs.String("group", "", "group name")
 	tools := fs.Bool("tools", false, "include tool calls and outputs")
+	offset := fs.Int("offset", 0, "message offset")
+	msgLimit := fs.Int("limit", 0, "message limit")
 	title := fs.String("title", "", "new title")
 	maxItems := fs.Int("max", 0, "maximum sessions")
+	full := fs.Bool("full", false, "include full rows")
+	titleAuto := fs.Bool("title-auto", false, "regenerate the title")
+	category := fs.String("category", "", "session category")
+	icon := fs.String("icon", "", "session icon")
 	if done, code := helpOrError(fs, argv, sessionsHelp); done {
 		return code
 	}
 	switch sub {
 	case "list":
+		_, _, _, _ = *full, *titleAuto, *category, *icon
 		q := url.Values{}
 		if *limit > 0 {
 			q.Set("limit", strconv.Itoa(*limit))
@@ -231,6 +238,12 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 		if *tools {
 			q.Set("tools", "1")
 		}
+		if *offset > 0 {
+			q.Set("offset", strconv.Itoa(*offset))
+		}
+		if *msgLimit > 0 {
+			q.Set("limit", strconv.Itoa(*msgLimit))
+		}
 		var res map[string]any
 		if err := c.do("GET", "/v1/cli/sessions/"+url.PathEscape(*id)+"/messages?"+q.Encode(), nil, &res); err != nil {
 			return out.fail("NOT_FOUND", err.Error())
@@ -251,10 +264,18 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 		if len(sessions) == 0 {
 			return out.fail("NOT_FOUND", "session not found")
 		}
-		out.print(map[string]any{"ok": true, "session": sessions[0], "status": "idle"})
+		first, _ := sessions[0].(map[string]any)
+		status, _ := first["status"].(string)
+		if status == "" {
+			status = "idle"
+		}
+		out.print(map[string]any{"ok": true, "session": first, "status": status})
 		return 0
 	case "update":
 		if *id == "" || strings.TrimSpace(*title) == "" {
+			if *category != "" || *icon != "" || *titleAuto {
+				return out.fail("UNSUPPORTED", "the server session store currently supports title updates only")
+			}
 			return out.fail("INVALID_ARGS", "--id and --title are required")
 		}
 		var res map[string]any
