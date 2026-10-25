@@ -141,6 +141,14 @@ at startup rather than starting with a silent fallback.
 | `POST` | `/v1/agent/runs/{id}/cancel` | Stop a run and its shell processes. |
 | `GET` | `/v1/sessions` | Session index for the future Web UI. |
 | `GET` | `/v1/sessions/{id}` | Stored messages for one session. |
+| `GET/POST` | `/v1/scheduled` | List or upsert server-owned scheduled tasks. |
+| `DELETE` | `/v1/scheduled/{id}` | Delete a scheduled task. |
+| `POST` | `/v1/scheduled/{id}/run` | Run a scheduled task now. |
+| `POST` | `/v1/files/list` | List a session workspace directory. |
+| `GET` | `/v1/files/raw` | Raw file bytes for preview/download. |
+| `POST` | `/v1/files/upload` | Upload bytes into a session workspace. |
+| `POST` | `/v1/terminal` | Open a PTY in the Debian sandbox (SSE). |
+| `POST` | `/v1/terminal/{id}/input` | Send terminal input bytes. |
 | `DELETE` | `/v1/sessions/{id}` | Delete a session. |
 | `GET` | `/v1/app/releases` | Private GitHub release proxy for the in-app updater. |
 | `GET` | `/v1/app/assets/{id}` | Authenticated APK download proxy. |

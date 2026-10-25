@@ -32,7 +32,7 @@ resources, generated schemas, and the bundled runtime assets.
 | `sandbox/offload/*` | mixed | partial | `minis-model-use`, `minis-sessions-cli`, `minis-scheduled`, `minis-config` need server-side equivalents; `android-*` CLIs stay on the phone. |
 | `provider/` | server | partial | OpenAI-compatible + Anthropic streams exist server-side. Native Gemini, OAuth custody, model catalogs, thinking rules, image budget parity, and all provider-specific edge cases are pending. |
 | `agent/` | server | partial | Basic tool loop and client bridge exist. Subagent orchestration, loop detection, SOUL/prompt builder, user-ask recovery, helper budgets and plan/steer are still in the app. |
-| `scheduled/` | server + device trigger | partial | Task model UI exists on the phone; the server has no scheduler yet. |
+| `scheduled/` | server + device trigger | partial | The server now has persistent interval/calendar/once tasks, run history and a headless runner; app-side task sync and completion notifications are still pending. |
 | `data/` context/prompt/memory/skills | server + device | partial | Prompt and skills/memory fragments are still built and sent by the app. Server-side memory/skills storage and compaction are pending. |
 | `browser/`, `speech/`, `service/`, `notification/`, `share/`, `webapp/`, `network/`, `accessibility/`, `offload/`, `power/`, `deeplink/` | device | device-only | Correctly remain on the phone; exposed as client tools where the agent needs them. |
 | `ui/` | UI | ui-only | Compose UI is unchanged. A small set of pure logic files is flagged `server` in the CSV (context planner, title rules, loop recovery) pending extraction. |
@@ -68,9 +68,10 @@ resources, generated schemas, and the bundled runtime assets.
 3. **Agent-loop parity.** Auto-retry, fallback chain, empty-turn recovery,
    tool-loop detector, steering/queued prompts, subagent execution and
    completion, user-ask recovery, interrupted-tail repair.
-4. **Scheduled tasks on the server.** Task persistence, interval/daily/custom
-   scheduling, target sessions, prefills, completion triggers, run history,
-   and app sync/notification delivery.
+4. **Scheduled tasks on the server.** Persistence, interval/calendar/once,
+   targets, headless execution and run history are live. Still pending:
+   app-side task sync, prefills/completion triggers, and completion
+   notifications when the app is closed.
 5. **Remote GUI surfaces.** File browser/preview and the interactive terminal
    now use the server: the file browser mirrors the session workspace into the
    existing File-backed UI, and the terminal uses a real PTY in the Debian
