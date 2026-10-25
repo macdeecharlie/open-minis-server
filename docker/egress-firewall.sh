@@ -28,3 +28,9 @@ rule -s 172.21.0.0/16 -d 172.18.0.0/16 -m conntrack --ctstate NEW -j DROP
 rule -s 172.21.0.0/16 -d 172.19.0.0/16 -m conntrack --ctstate NEW -j DROP
 rule -s 172.21.0.0/16 -d 172.20.0.0/16 -m conntrack --ctstate NEW -j DROP
 rule -s 172.21.0.0/16 -d 172.21.0.0/16 -m conntrack --ctstate NEW -j DROP
+
+# The Docker gateway is the host. DOCKER-USER sees forwarded traffic, not
+# packets addressed to the host's own INPUT chain, so block NEW connections
+# from the sandbox subnet there as well.
+iptables -C INPUT -s 172.21.0.0/16 -m conntrack --ctstate NEW -j DROP 2>/dev/null || \
+    iptables -I INPUT 1 -s 172.21.0.0/16 -m conntrack --ctstate NEW -j DROP
