@@ -196,6 +196,10 @@ func (c *Config) ModelList() []map[string]any {
 			}
 			if len(m.InputModalities) > 0 {
 				item["input_modalities"] = m.InputModalities
+				item["architecture"] = map[string]any{
+					"input_modalities":  m.InputModalities,
+					"output_modalities": []string{"text"},
+				}
 			}
 			if m.ContextWindow > 0 {
 				item["context_window"] = m.ContextWindow

@@ -267,8 +267,13 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			callOrder = append(callOrder, id)
 			hasTool = true
 			executor := "client"
-			if serverToolNames[name] && !clientOwnedCall(name, json.RawMessage(`{}`)) {
+			if serverToolNames[name] {
 				executor = "server"
+				// File tools may be executed by either side depending on the
+				// path, which is only known once the arguments are complete.
+				if name == "file_read" || name == "file_write" || name == "file_edit" {
+					executor = "pending"
+				}
 			}
 			run.emit("tool_start", map[string]any{"id": id, "name": name, "executor": executor})
 			return c
