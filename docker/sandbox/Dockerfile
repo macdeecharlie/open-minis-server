@@ -46,7 +46,8 @@ RUN apt-get update \
         xz-utils \
         zip \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /workspace/sessions /root
+    && mkdir -p /workspace/sessions /workspace/global/mcp-servers /var/minis /root \
+    && ln -s /workspace/global/mcp-servers /var/minis/mcp-servers
 
 COPY --from=build /out/minis-server /usr/local/bin/minis-server
 COPY docker/sandbox/mcp-cli/bin/minis-mcp-cli /usr/local/bin/minis-mcp-cli
