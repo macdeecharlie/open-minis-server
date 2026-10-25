@@ -15,7 +15,7 @@ type openAIProvider struct {
 }
 
 func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
-	msgs, err := openAIMessages(req.Messages)
+	msgs, err := openAIMessages(req.Messages, modelSupportsImages(req.Model))
 	if err != nil {
 		return ProviderResult{}, err
 	}
@@ -239,7 +239,7 @@ func mapOpenAIStop(s string) string {
 	}
 }
 
-func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
+func openAIMessages(msgs []WireMessage, supportsImages bool) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
@@ -291,6 +291,7 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 					results = append(results, part)
 				}
 			}
+			var carriers []map[string]any
 			for _, r := range results {
 				content := r.Content
 				if r.IsError && !strings.HasPrefix(strings.TrimSpace(content), "Error") {
@@ -301,7 +302,19 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 					"tool_call_id": r.ID,
 					"content":      content,
 				})
+				if supportsImages && r.Data != "" && r.Mime != "" {
+					carriers = append(carriers, map[string]any{
+						"role": "user",
+						"content": []map[string]any{
+							{"type": "text", "text": "[Image returned by " + r.Name + " (tool_call_id: " + r.ID + ")]"},
+							{"type": "image_url", "image_url": map[string]any{
+								"url": "data:" + r.Mime + ";base64," + r.Data,
+							}},
+						},
+					})
+				}
 			}
+			out = append(out, carriers...)
 			if len(texts) > 0 || len(images) > 0 || len(audios) > 0 {
 				content := strings.Join(texts, "")
 				if len(images) > 0 || len(audios) > 0 {
@@ -368,4 +381,13 @@ func openAIReasoningEffort(model *Model, thinking string) string {
 	default:
 		return "medium"
 	}
+}
+
+func modelSupportsImages(model *Model) bool {
+	for _, m := range model.InputModalities {
+		if strings.EqualFold(m, "image") {
+			return true
+		}
+	}
+	return false
 }

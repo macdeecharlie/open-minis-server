@@ -291,10 +291,19 @@ func anthropicMessages(msgs []WireMessage) ([]map[string]any, error) {
 					if part.IsError && !strings.HasPrefix(strings.TrimSpace(txt), "Error") {
 						txt = "Error: " + txt
 					}
+					resultContent := []map[string]any{{"type": "text", "text": txt}}
+					if part.Data != "" && part.Mime != "" {
+						resultContent = append(resultContent, map[string]any{
+							"type": "image",
+							"source": map[string]any{
+								"type": "base64", "media_type": part.Mime, "data": part.Data,
+							},
+						})
+					}
 					results = append(results, map[string]any{
 						"type":        "tool_result",
 						"tool_use_id": part.ID,
-						"content":     txt,
+						"content":     resultContent,
 						"is_error":    part.IsError,
 					})
 				case "text":

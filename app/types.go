@@ -105,6 +105,12 @@ type ToolResult struct {
 	Title      string `json:"title,omitempty"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
 	Executor   string `json:"executor,omitempty"`
+	// Image-bearing tool results (browser screenshots, read_image). The bytes
+	// travel as base64 so the same result can be replayed to a vision model on
+	// the next turn.
+	Image     string `json:"image,omitempty"`
+	ImageMime string `json:"image_mime,omitempty"`
+	ImagePath string `json:"image_path,omitempty"`
 }
 
 type StoredMessage struct {

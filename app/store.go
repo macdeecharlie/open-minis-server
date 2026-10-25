@@ -296,8 +296,7 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 	defer s.mu.Unlock()
 	m := s.meta[id]
 	if m == nil {
-		m = &SessionMeta{ID: id, CreatedAt: nowMillis()}
-		s.meta[id] = m
+		return os.ErrNotExist
 	}
 	m.Title = title
 	m.UpdatedAt = nowMillis()

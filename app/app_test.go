@@ -946,12 +946,12 @@ func TestToolResultOffload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := ToolResult{ID: "call_1", Name: "shell_execute", Content: strings.Repeat("x", 50*1024)}
-	offloadToolResult(sb, &res)
-	if !strings.Contains(res.Content, "/var/minis/offloads/tool_call_1.txt") {
+	res := ToolResult{ID: "call_1", Name: "shell_execute", Content: strings.Repeat("x", 55*1024)}
+	offloadToolResult(sb, &res, true)
+	if !strings.Contains(res.Content, "/var/minis/offloads/tools/call_1.txt") {
 		t.Fatalf("stub = %q", res.Content)
 	}
-	content, err := sb.ReadFile("/var/minis/offloads/tool_call_1.txt", 1, 0, 1_000_000)
+	content, err := sb.ReadFile("/var/minis/offloads/tools/call_1.txt", 1, 0, 1_000_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1122,6 +1122,9 @@ func TestSessionMetaAndDeleteRemovesWorkspace(t *testing.T) {
 		}
 		resp.Body.Close()
 		return resp.StatusCode
+	}
+	if _, err := store.EnsureSession("sess-meta", "mock-1"); err != nil {
+		t.Fatal(err)
 	}
 	if code := do("POST", "/v1/sessions/sess-meta/meta", map[string]any{"title": "Renamed"}); code != 200 {
 		t.Fatalf("meta HTTP %d", code)
@@ -1683,7 +1686,7 @@ func TestAudioInputMapping(t *testing.T) {
 	msgs, err := openAIMessages([]WireMessage{{Role: "user", Parts: []WirePart{
 		{Type: "text", Text: "transcribe"},
 		{Type: "audio", Format: "wav", Mime: "audio/wav", Data: "YWJj"},
-	}}})
+	}}}, false)
 	if err != nil || len(msgs) != 1 {
 		t.Fatalf("msgs=%+v err=%v", msgs, err)
 	}
@@ -1720,5 +1723,43 @@ func TestCLIBinariesStart(t *testing.T) {
 		if code := runCLI(name, []string{"--help"}); code != 0 {
 			t.Fatalf("%s --help exit %d", name, code)
 		}
+	}
+}
+
+func TestToolResultImageMapping(t *testing.T) {
+	msg := WireMessage{Role: "user", Parts: []WirePart{{
+		Type: "tool_result", ID: "call_1", Name: "browser_use", Content: "screenshot",
+		Mime: "image/png", Data: "aW1n",
+	}}}
+	msgs, err := openAIMessages([]WireMessage{msg}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := fmt.Sprint(msgs)
+	if !strings.Contains(blob, "image_url") || !strings.Contains(blob, "data:image/png;base64,aW1n") || !strings.Contains(blob, "tool_call_id: call_1") {
+		t.Fatalf("OpenAI carrier missing: %s", blob)
+	}
+	if _, err := openAIMessages([]WireMessage{msg}, false); err != nil {
+		t.Fatal(err)
+	}
+	amsgs, err := anthropicMessages([]WireMessage{msg})
+	if err != nil || !strings.Contains(fmt.Sprint(amsgs), "image") {
+		t.Fatalf("Anthropic tool image missing: %v err=%v", amsgs, err)
+	}
+	gmsgs, err := geminiContents([]WireMessage{msg})
+	if err != nil || !strings.Contains(fmt.Sprint(gmsgs), "inlineData") {
+		t.Fatalf("Gemini tool image missing: %v err=%v", gmsgs, err)
+	}
+}
+
+func TestImageBudgetToolResult(t *testing.T) {
+	out, dropped := applyImageBudget([]WireMessage{{Role: "user", Parts: []WirePart{{
+		Type: "tool_result", ID: "c", Name: "browser_use", Content: "shot", Mime: "image/png", Data: strings.Repeat("A", 11*1024*1024),
+	}}}})
+	if dropped != 1 {
+		t.Fatalf("dropped = %d", dropped)
+	}
+	if out[0].Parts[0].Data != "" || !strings.Contains(out[0].Parts[0].Content, "image omitted") {
+		t.Fatalf("tool image was not omitted cleanly: %+v", out[0].Parts[0])
 	}
 }

@@ -272,17 +272,20 @@ func (s *Server) providerFor(p *Provider) ProviderClient {
 // offloads directory and replaces it with a short pointer, matching the
 // Android agent's context offload so one large output cannot consume the
 // model window.
-func offloadToolResult(sb ToolSandbox, res *ToolResult) {
-	const threshold = 40 * 1024
+func offloadToolResult(sb ToolSandbox, res *ToolResult, aggressive bool) {
+	threshold := 200 * 1024
+	if aggressive {
+		threshold = 50 * 1024
+	}
 	if res == nil || res.IsError || len(res.Content) <= threshold {
 		return
 	}
-	name := "tool_" + strings.NewReplacer("/", "_", ":", "_").Replace(res.ID) + ".txt"
-	path := "/var/minis/offloads/" + name
+	name := strings.NewReplacer("/", "_", ":", "_", " ", "_").Replace(res.ID) + ".txt"
+	path := "/var/minis/offloads/tools/" + name
 	if err := sb.WriteFile(path, res.Content, false, true); err != nil {
 		return
 	}
-	res.Content = fmt.Sprintf("[Large tool result saved to %s (%d bytes). Use file_read to inspect it.]", path, len(res.Content))
+	res.Content = fmt.Sprintf("[CONTEXT OFFLOADED] Large tool result saved to %s (%d bytes). Use file_read to inspect it.", path, len(res.Content))
 }
 
 func (s *Server) runAgent(req RunRequest, run *Run) {
@@ -681,11 +684,15 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				lastToolSignature = sig
 				repeatedToolCalls = 0
 			}
-			if repeatedToolCalls == 2 {
+			// Match the official detector's magnitude: the 10th identical call
+			// warns, the 20th is the critical stop. Polling with delay is
+			// explicitly allowed by the prompt, so a low cutoff would break
+			// legitimate status checks.
+			if repeatedToolCalls == 9 {
 				run.emit("info", map[string]any{"text": "The model is repeating the same tool call (" + call.part.Name + "). It will be stopped if the loop continues."})
 			}
-			if repeatedToolCalls >= 4 {
-				run.emit("error", map[string]any{"message": "tool loop detected: " + call.part.Name + " was called with identical arguments five times"})
+			if repeatedToolCalls >= 19 {
+				run.emit("error", map[string]any{"message": "tool loop detected: " + call.part.Name + " was called with identical arguments twenty times"})
 				return
 			}
 		} else {
@@ -733,6 +740,10 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			run.emit("done", map[string]any{"stop_reason": stop, "turns": turn + 1})
 			return
 		}
+		contextTight := false
+		if window := attempts[startingAttempt].model.ContextWindow; window > 0 {
+			contextTight = estimatedRequestTokens(system, messages, tools) > window*7/10
+		}
 
 		// Execute the batch in provider order. Server tools run here; client
 		// tools pause the run until the Android app posts their result.
@@ -748,7 +759,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				})
 				res.ID = id
 				res.Executor = "server"
-				offloadToolResult(sb, &res)
+				offloadToolResult(sb, &res, contextTight)
 				run.emit("tool_result", res)
 				results = append(results, res)
 				continue
@@ -786,7 +797,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			}
 			res.ID = id
 			res.Executor = "client"
-			offloadToolResult(sb, &res)
+			offloadToolResult(sb, &res, contextTight)
 			run.emit("tool_result", res)
 			results = append(results, res)
 		}
@@ -795,9 +806,14 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		resultParts := make([]WirePart, 0, len(results))
 		durations := map[string]int64{}
 		for _, r := range results {
-			resultParts = append(resultParts, WirePart{
+			part := WirePart{
 				Type: "tool_result", ID: r.ID, Name: r.Name, Content: r.Content, IsError: r.IsError,
-			})
+			}
+			if r.Image != "" {
+				part.Mime = r.ImageMime
+				part.Data = r.Image
+			}
+			resultParts = append(resultParts, part)
 			if r.DurationMs > 0 {
 				durations[r.ID] = r.DurationMs
 			}

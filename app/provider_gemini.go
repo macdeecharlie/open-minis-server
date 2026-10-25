@@ -217,6 +217,16 @@ func geminiContents(msgs []WireMessage) ([]map[string]any, error) {
 						"error":  p.IsError,
 					},
 				}})
+				if p.Data != "" {
+					mime := p.Mime
+					if mime == "" {
+						mime = "image/png"
+					}
+					parts = append(parts, map[string]any{"text": "[Image returned by " + p.Name + "]"})
+					parts = append(parts, map[string]any{"inlineData": map[string]any{
+						"mimeType": mime, "data": p.Data,
+					}})
+				}
 			}
 		}
 		if len(parts) > 0 {

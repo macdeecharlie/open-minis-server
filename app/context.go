@@ -405,12 +405,18 @@ func applyImageBudget(messages []WireMessage) ([]WireMessage, int) {
 	for i := len(out) - 1; i >= 0; i-- {
 		for j := len(out[i].Parts) - 1; j >= 0; j-- {
 			p := out[i].Parts[j]
-			if p.Type != "image" {
+			if p.Data == "" || (p.Type != "image" && p.Type != "tool_result") {
 				continue
 			}
 			size := len(p.Data)
 			if size > 10*1024*1024 || total+size > requestImageBudget {
-				out[i].Parts[j] = WirePart{Type: "text", Text: "[image omitted: request image budget exceeded; older images are dropped first]"}
+				if p.Type == "tool_result" {
+					out[i].Parts[j].Data = ""
+					out[i].Parts[j].Mime = ""
+					out[i].Parts[j].Content += "\n\n[image omitted: request image budget exceeded; older images are dropped first]"
+				} else {
+					out[i].Parts[j] = WirePart{Type: "text", Text: "[image omitted: request image budget exceeded; older images are dropped first]"}
+				}
 				dropped++
 				continue
 			}

@@ -53,6 +53,7 @@ type PromptContext struct {
 	UserAskEnabled    bool   `json:"user_ask_enabled,omitempty"`
 	DelegationEnabled bool   `json:"delegation_enabled,omitempty"`
 	Helper            bool   `json:"helper,omitempty"`
+	Headless          bool   `json:"headless,omitempty"`
 	Language          string `json:"language,omitempty"`
 	Timezone          string `json:"timezone,omitempty"`
 	ModelUseCount     int    `json:"model_use_count,omitempty"`
@@ -166,5 +167,8 @@ func buildSystemPrompt(pc *PromptContext, workspace string) string {
 	out.WriteString("- Device language: " + lang + "\n")
 	out.WriteString("- minis-model-use models available: " + strconv.Itoa(pc.ModelUseCount) + "\n")
 	out.WriteString("- Execution environment: dedicated Debian 12 container, root shell, workspace " + workspace + " (maps /var/minis/workspace and /var/minis/attachments)")
+	if pc.Headless {
+		out.WriteString("\n- This is a headless server run: Android/device tools, minis-scheduled, memory tools, user_ask, browser automation and the interactive terminal are unavailable. Use shell_execute, file tools and web tools only; do not ask the user questions.")
+	}
 	return out.String()
 }
