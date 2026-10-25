@@ -1589,3 +1589,57 @@ func TestProviderStreamIdleTimeout(t *testing.T) {
 		t.Fatalf("idle watchdog took too long: %s", time.Since(start))
 	}
 }
+
+func TestCancelStopsRun(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	req := RunRequest{
+		SessionID: "sess-cancel", RunID: "run-cancel", Model: "mock-1",
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
+	}
+	body, _ := json.Marshal(req)
+	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
+	hreq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(hreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	toolID := ""
+	for sc.Scan() {
+		if strings.HasPrefix(sc.Text(), "event: await_client") {
+			break
+		}
+		if strings.Contains(sc.Text(), "call_mock_client") && toolID == "" {
+			toolID = "call_mock_client"
+		}
+	}
+	creq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs/run-cancel/cancel", nil)
+	creq.Header.Set("Authorization", "Bearer test-token")
+	cresp, err := http.DefaultClient.Do(creq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cresp.Body.Close()
+	if cresp.StatusCode != http.StatusAccepted {
+		t.Fatalf("cancel HTTP %d", cresp.StatusCode)
+	}
+	resp.Body.Close()
+	time.Sleep(100 * time.Millisecond)
+	payload, _ := json.Marshal(ToolResult{ID: toolID, Name: "memory_get", Content: "late"})
+	preq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs/run-cancel/tool_result", bytes.NewReader(payload))
+	preq.Header.Set("Authorization", "Bearer test-token")
+	pres, err := http.DefaultClient.Do(preq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pres.Body.Close()
+	if pres.StatusCode != http.StatusNotFound {
+		t.Fatalf("late tool result HTTP %d, want 404 after cancel", pres.StatusCode)
+	}
+}

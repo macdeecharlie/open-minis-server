@@ -194,7 +194,8 @@ func streamErrorRetryable(err error) bool {
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "connection reset") || strings.Contains(s, "broken pipe") ||
-		strings.Contains(s, "unexpected eof") || strings.Contains(s, "timeout")
+		strings.Contains(s, "unexpected eof") || strings.Contains(s, "timeout") ||
+		strings.Contains(s, "idle")
 }
 
 func streamErrorFallbackable(err error, strategy string) bool {
