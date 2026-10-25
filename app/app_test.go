@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -534,5 +535,74 @@ func TestSandboxAgentHealth(t *testing.T) {
 	}
 	if info["capabilities"] == nil {
 		t.Fatalf("info = %+v", info)
+	}
+}
+
+func TestSandboxTerminalPTY(t *testing.T) {
+	agent := &sandboxAgent{
+		token: "t", workRoot: t.TempDir(), maxOutput: 10000,
+		terminals: newTerminalManager(),
+	}
+	ts := httptest.NewServer(agent.handler())
+	defer ts.Close()
+
+	body := strings.NewReader(`{"session_id":"sess-pty","cols":100,"rows":30}`)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/terminal", body)
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("terminal HTTP %d", resp.StatusCode)
+	}
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	event := ""
+	termID := ""
+	var output strings.Builder
+	deadline := time.Now().Add(20 * time.Second)
+	sent := false
+	for sc.Scan() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for PTY output")
+		}
+		line := sc.Text()
+		if strings.HasPrefix(line, "event:") {
+			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var data map[string]any
+		_ = json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &data)
+		if event == "ready" {
+			termID, _ = data["id"].(string)
+			if termID == "" {
+				t.Fatal("terminal ready without id")
+			}
+			ireq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/terminal/"+termID+"/input", strings.NewReader("echo pty-ok\r"))
+			ireq.Header.Set("Authorization", "Bearer t")
+			iresp, err := http.DefaultClient.Do(ireq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			iresp.Body.Close()
+			sent = true
+		}
+		if event == "output" {
+			encoded, _ := data["data"].(string)
+			b, _ := base64.StdEncoding.DecodeString(encoded)
+			output.Write(b)
+			if sent && strings.Contains(output.String(), "pty-ok") {
+				break
+			}
+		}
+	}
+	if !sent || !strings.Contains(output.String(), "pty-ok") {
+		t.Fatalf("PTY did not return command output: %q", output.String())
 	}
 }

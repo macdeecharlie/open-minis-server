@@ -22,6 +22,7 @@ type sandboxAgent struct {
 	token     string
 	workRoot  string
 	maxOutput int
+	terminals *terminalManager
 }
 
 func runSandboxAgent() {
@@ -42,7 +43,7 @@ func runSandboxAgent() {
 	if err := os.MkdirAll(workRoot, 0o755); err != nil {
 		log.Fatalf("create sandbox work root: %v", err)
 	}
-	agent := &sandboxAgent{token: token, workRoot: workRoot, maxOutput: maxOutput}
+	agent := &sandboxAgent{token: token, workRoot: workRoot, maxOutput: maxOutput, terminals: newTerminalManager()}
 	listen := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_LISTEN"))
 	if listen == "" {
 		listen = ":8090"
@@ -71,6 +72,10 @@ func (a *sandboxAgent) handler() http.Handler {
 	mux.Handle("POST /v1/files/list", a.auth(http.HandlerFunc(a.listDir)))
 	mux.Handle("POST /v1/files/raw", a.auth(http.HandlerFunc(a.rawFile)))
 	mux.Handle("POST /v1/files/upload", a.auth(http.HandlerFunc(a.uploadFile)))
+	mux.Handle("POST /v1/terminal", a.terminalHandler(a.terminals))
+	mux.Handle("POST /v1/terminal/{id}/input", a.terminalInput(a.terminals))
+	mux.Handle("POST /v1/terminal/{id}/resize", a.terminalResize(a.terminals))
+	mux.Handle("POST /v1/terminal/{id}/close", a.terminalClose(a.terminals))
 	return mux
 }
 
