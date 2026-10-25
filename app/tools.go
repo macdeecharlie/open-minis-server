@@ -57,12 +57,8 @@ var deviceCLIs = map[string]bool{
 	"android-speak":        true,
 	"android-speech":       true,
 	"android-weather":      true,
-	"minis-config":         true,
-	"minis-mcp-cli":        true,
-	"minis-model-use":      true,
 	"minis-open":           true,
 	"minis-scheduled":      true,
-	"minis-sessions-cli":   true,
 }
 
 func clientOwnedCall(name string, args json.RawMessage) bool {
