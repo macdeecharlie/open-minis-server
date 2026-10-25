@@ -72,7 +72,7 @@ func estimatePartTokens(p WirePart) int {
 		return estimateTextTokens(p.Name) + estimateTextTokens(p.ID) + estimateWireTokens(string(p.Args)) + perToolUseOverhead
 	case "tool_result":
 		return estimateWireTokens(p.Content) + estimateTextTokens(p.ID) + perToolResultOverhead + estimateImageTokens(p.Data)
-	case "image":
+	case "image", "audio":
 		return estimateImageTokens(p.Data)
 	default:
 		return estimateWireTokens(p.Text) + estimateImageTokens(p.Data)

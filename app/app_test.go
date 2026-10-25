@@ -1674,3 +1674,28 @@ func TestRepairToolPairing(t *testing.T) {
 		t.Fatalf("orphan result was not dropped: %+v", out)
 	}
 }
+
+func TestAudioInputMapping(t *testing.T) {
+	msgs, err := openAIMessages([]WireMessage{{Role: "user", Parts: []WirePart{
+		{Type: "text", Text: "transcribe"},
+		{Type: "audio", Format: "wav", Mime: "audio/wav", Data: "YWJj"},
+	}}})
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("msgs=%+v err=%v", msgs, err)
+	}
+	blob := fmt.Sprint(msgs[0]["content"])
+	if !strings.Contains(blob, "input_audio") || !strings.Contains(blob, "wav") {
+		t.Fatalf("audio content = %s", blob)
+	}
+	contents, err := geminiContents([]WireMessage{{Role: "user", Parts: []WirePart{
+		{Type: "audio", Format: "mp3", Mime: "audio/mp3", Data: "YWJj"},
+	}}})
+	if err != nil || !strings.Contains(fmt.Sprint(contents), "audio/mp3") {
+		t.Fatalf("gemini audio = %v err=%v", contents, err)
+	}
+	if _, err := anthropicMessages([]WireMessage{{Role: "user", Parts: []WirePart{
+		{Type: "audio", Format: "wav", Data: "YWJj"},
+	}}}); err == nil {
+		t.Fatal("Anthropic audio should fail visibly")
+	}
+}

@@ -189,9 +189,13 @@ func geminiContents(msgs []WireMessage) ([]map[string]any, error) {
 				if p.Text != "" {
 					parts = append(parts, map[string]any{"text": p.Text})
 				}
-			case "image":
+			case "image", "audio":
+				mime := p.Mime
+				if p.Type == "audio" && mime == "" {
+					mime = "audio/" + p.Format
+				}
 				parts = append(parts, map[string]any{"inlineData": map[string]any{
-					"mimeType": p.Mime, "data": p.Data,
+					"mimeType": mime, "data": p.Data,
 				}})
 			case "tool_use":
 				args := p.Args

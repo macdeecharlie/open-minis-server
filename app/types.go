@@ -26,6 +26,7 @@ type WirePart struct {
 	Text             string          `json:"text,omitempty"`
 	Mime             string          `json:"mime,omitempty"`
 	Data             string          `json:"data,omitempty"`
+	Format           string          `json:"format,omitempty"`
 	ID               string          `json:"id,omitempty"`
 	Name             string          `json:"name,omitempty"`
 	Args             json.RawMessage `json:"args,omitempty"`

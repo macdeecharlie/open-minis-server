@@ -300,6 +300,8 @@ func anthropicMessages(msgs []WireMessage) ([]map[string]any, error) {
 							"data":       part.Data,
 						},
 					})
+				case "audio":
+					return nil, fmt.Errorf("audio input is not supported by Anthropic models")
 				}
 			}
 			all := append(results, content...)

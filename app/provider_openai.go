@@ -277,6 +277,7 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 		case "user":
 			var texts []string
 			var images []WirePart
+			var audios []WirePart
 			var results []WirePart
 			for _, part := range m.Parts {
 				switch part.Type {
@@ -284,6 +285,8 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 					texts = append(texts, part.Text)
 				case "image":
 					images = append(images, part)
+				case "audio":
+					audios = append(audios, part)
 				case "tool_result":
 					results = append(results, part)
 				}
@@ -299,9 +302,9 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 					"content":      content,
 				})
 			}
-			if len(texts) > 0 || len(images) > 0 {
+			if len(texts) > 0 || len(images) > 0 || len(audios) > 0 {
 				content := strings.Join(texts, "")
-				if len(images) > 0 {
+				if len(images) > 0 || len(audios) > 0 {
 					parts := []map[string]any{}
 					if content != "" {
 						parts = append(parts, map[string]any{"type": "text", "text": content})
@@ -311,6 +314,18 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 							"type": "image_url",
 							"image_url": map[string]any{
 								"url": "data:" + img.Mime + ";base64," + img.Data,
+							},
+						})
+					}
+					for _, a := range audios {
+						format := a.Format
+						if format == "" {
+							format = strings.TrimPrefix(a.Mime, "audio/")
+						}
+						parts = append(parts, map[string]any{
+							"type": "input_audio",
+							"input_audio": map[string]any{
+								"data": a.Data, "format": format,
 							},
 						})
 					}
