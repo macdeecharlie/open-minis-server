@@ -48,6 +48,7 @@ func main() {
 		log.Fatalf("open store: %v", err)
 	}
 	server := NewServer(cfg, store, *configPath)
+	server.scheduler.Start(context.Background())
 	httpServer := &http.Server{
 		Addr:              *listen,
 		Handler:           server.Handler(),
@@ -68,6 +69,7 @@ func main() {
 	go func() {
 		<-sigCtx.Done()
 		log.Printf("shutting down")
+		server.scheduler.Stop()
 		server.cancelAllRuns()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

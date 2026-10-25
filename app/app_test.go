@@ -606,3 +606,56 @@ func TestSandboxTerminalPTY(t *testing.T) {
 		t.Fatalf("PTY did not return command output: %q", output.String())
 	}
 }
+
+func TestScheduledHeadlessRun(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, err := NewStore(cfg.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	task := &ScheduledTask{
+		ID: "task_test", Label: "scheduled", Prompt: "run [[shell:echo scheduled-ok]]",
+		Target: "new", Enabled: true, Kind: "interval", IntervalSec: 60,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	sid, text, err := s.runScheduled(ctx, task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "scheduled-ok") {
+		t.Fatalf("scheduled text = %q", text)
+	}
+	msgs, err := s.store.Messages(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) < 3 {
+		t.Fatalf("scheduled messages = %d", len(msgs))
+	}
+}
+
+func TestScheduledCalendarNext(t *testing.T) {
+	task := &ScheduledTask{Kind: "daily", TimeOfDay: "09:30", Timezone: "Asia/Kolkata"}
+	now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
+	next := nextCalendar(task, now)
+	if next == 0 {
+		t.Fatal("no next daily run")
+	}
+	if got := time.UnixMilli(next).In(timeLocation(t, "Asia/Kolkata")).Format("15:04"); got != "09:30" {
+		t.Fatalf("next time = %s", got)
+	}
+	if time.UnixMilli(next).Before(now) {
+		t.Fatal("next run is in the past")
+	}
+}
+
+func timeLocation(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}

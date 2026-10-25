@@ -12,11 +12,12 @@ import (
 )
 
 type Run struct {
-	ID     string
-	ctx    context.Context
-	cancel context.CancelFunc
-	events chan Event
-	closed sync.Once
+	ID       string
+	Headless bool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	events   chan Event
+	closed   sync.Once
 
 	pmu     sync.Mutex
 	pending map[string]chan ToolResult
@@ -437,8 +438,21 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				results = append(results, res)
 				continue
 			}
-			// Client-owned tool. Register the result channel BEFORE the
-			// await event so a fast POST can never arrive before we listen.
+			// Client-owned tool. A scheduled/headless run has no paired app
+			// to execute it; return a visible tool error rather than waiting
+			// for a tool result that can never arrive.
+			if run.Headless {
+				res := ToolResult{
+					ID: id, Name: name, Title: "Device tool unavailable", Executor: "client",
+					IsError: true,
+					Content: "Error: this tool requires the paired Android app, which is not connected for this scheduled run. Use server shell/file/web tools instead.",
+				}
+				run.emit("tool_result", res)
+				results = append(results, res)
+				continue
+			}
+			// Register the result channel BEFORE the await event so a fast POST
+			// can never arrive before we listen.
 			ch := run.beginClientTool(id)
 			run.emit("await_client", map[string]any{"id": id, "name": name})
 			res, err := run.waitClientToolCh(run.ctx, ch, 65*time.Minute)

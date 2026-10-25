@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ type Server struct {
 	runsMu sync.Mutex
 	runs   map[string]*Run
 
+	scheduledStore *ScheduledStore
+	scheduler      *Scheduler
+
 	updateMu    sync.Mutex
 	updateCache map[string]updateCacheEntry
 }
@@ -37,15 +41,22 @@ type updateCacheEntry struct {
 }
 
 func NewServer(cfg *Config, store *Store, configPath string) *Server {
-	return &Server{
-		cfg:         cfg,
-		configPath:  configPath,
-		store:       store,
-		http:        newProviderHTTP(),
-		started:     time.Now(),
-		runs:        map[string]*Run{},
-		updateCache: map[string]updateCacheEntry{},
+	scheduledStore, err := NewScheduledStore(filepath.Join(cfg.DataDir, "scheduled.json"))
+	if err != nil {
+		log.Fatalf("open scheduled store: %v", err)
 	}
+	s := &Server{
+		cfg:            cfg,
+		configPath:     configPath,
+		store:          store,
+		http:           newProviderHTTP(),
+		started:        time.Now(),
+		runs:           map[string]*Run{},
+		updateCache:    map[string]updateCacheEntry{},
+		scheduledStore: scheduledStore,
+	}
+	s.scheduler = NewScheduler(cfg, s, scheduledStore)
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -61,6 +72,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/terminal/{id}/input", s.auth(http.HandlerFunc(s.handleTerminalInput)))
 	mux.Handle("POST /v1/terminal/{id}/resize", s.auth(http.HandlerFunc(s.handleTerminalResize)))
 	mux.Handle("POST /v1/terminal/{id}/close", s.auth(http.HandlerFunc(s.handleTerminalClose)))
+	mux.Handle("GET /v1/scheduled", s.auth(http.HandlerFunc(s.handleScheduledList)))
+	mux.Handle("POST /v1/scheduled", s.auth(http.HandlerFunc(s.handleScheduledUpsert)))
+	mux.Handle("DELETE /v1/scheduled/{id}", s.auth(http.HandlerFunc(s.handleScheduledDelete)))
+	mux.Handle("POST /v1/scheduled/{id}/run", s.auth(http.HandlerFunc(s.handleScheduledRun)))
 	mux.Handle("POST /v1/agent/runs/{id}/tool_result", s.auth(http.HandlerFunc(s.handleToolResult)))
 	mux.Handle("POST /v1/agent/runs/{id}/cancel", s.auth(http.HandlerFunc(s.handleCancelRun)))
 	mux.Handle("GET /v1/sessions", s.auth(http.HandlerFunc(s.handleListSessions)))
