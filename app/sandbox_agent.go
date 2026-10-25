@@ -36,7 +36,13 @@ func runSandboxAgent() {
 	if workRoot == "" {
 		workRoot = "/workspace/sessions"
 	}
-	mountNS := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_MOUNT_NAMESPACE")) == "1"
+	mountNSEnv := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_MOUNT_NAMESPACE"))
+	mountNS := mountNSEnv == "1"
+	if mountNSEnv == "" {
+		if _, err := os.Stat("/usr/local/bin/minis-session-exec"); err == nil {
+			mountNS = true
+		}
+	}
 	globalRoot := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_GLOBAL_ROOT"))
 	if globalRoot == "" {
 		globalRoot = "/workspace/global"
