@@ -94,10 +94,11 @@ layout instead of relying on command-string rewriting. The sandbox has
 Docker socket; the capability is container-local.
 
 Device-local paths (`attachments`, `skills`, `memory`, `shared`, `mounts`,
-`browser`) and commands invoking `android-*`, `minis-open`, `minis-scheduled`
-or `minis-mcp-cli` are routed to the paired app. The app executes them in its
-existing on-device shell exactly like the official build; the server never
-pretends to have Android APIs.
+`browser`) and commands invoking `android-*`, `minis-open` or `minis-scheduled`
+are routed to the paired app. The app executes them in its existing on-device
+shell exactly like the official build; the server never pretends to have
+Android APIs. `minis-sessions-cli`, `minis-config`, `minis-model-use` and
+`minis-mcp-cli` run inside the sandbox.
 
 ## Storage
 
