@@ -1061,3 +1061,22 @@ func TestCLIEndpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRequestImageBudget(t *testing.T) {
+	big := strings.Repeat("A", 12*1024*1024)
+	messages := []WireMessage{
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "old"}, {Type: "image", Mime: "image/png", Data: big}}},
+		{Role: "assistant", Parts: []WirePart{{Type: "text", Text: "ok"}}},
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "new"}, {Type: "image", Mime: "image/png", Data: "small"}}},
+	}
+	out, dropped := applyImageBudget(messages)
+	if dropped != 1 {
+		t.Fatalf("dropped = %d", dropped)
+	}
+	if out[0].Parts[1].Type != "text" || !strings.Contains(out[0].Parts[1].Text, "omitted") {
+		t.Fatalf("old image = %+v", out[0].Parts[1])
+	}
+	if out[2].Parts[1].Type != "image" {
+		t.Fatalf("new image was dropped: %+v", out[2].Parts[1])
+	}
+}

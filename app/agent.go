@@ -267,6 +267,10 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 
 	messages := append([]WireMessage(nil), req.Messages...)
+	if budgeted, dropped := applyImageBudget(messages); dropped > 0 {
+		messages = budgeted
+		run.emit("info", map[string]any{"text": fmt.Sprintf("%d older image(s) were omitted to stay within the request image budget.", dropped)})
+	}
 	run.emit("ready", map[string]any{
 		"run_id":     run.ID,
 		"session_id": sessionID,
@@ -293,7 +297,12 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			return
 		}
 		if didCompact {
-			messages = compactedMessages
+			if budgeted, dropped := applyImageBudget(compactedMessages); dropped > 0 {
+				messages = budgeted
+				run.emit("info", map[string]any{"text": fmt.Sprintf("%d older image(s) were omitted to stay within the request image budget.", dropped)})
+			} else {
+				messages = compactedMessages
+			}
 		}
 		parts := []*WirePart{}
 		var textBuilder strings.Builder

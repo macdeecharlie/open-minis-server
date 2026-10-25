@@ -357,6 +357,40 @@ func (s *Server) maybeCompact(run *Run, messages []WireMessage, system string, t
 	return compacted, true, nil
 }
 
+const requestImageBudget = 25 * 1024 * 1024
+
+// applyImageBudget keeps the newest images that fit the request budget. The
+// official client enforces a 25 MB per-request image budget and replaces
+// older images with a text placeholder; providers reject oversized bodies, so
+// this must run before every request. Data is base64, which is what travels on
+// the wire.
+func applyImageBudget(messages []WireMessage) ([]WireMessage, int) {
+	total := 0
+	dropped := 0
+	out := make([]WireMessage, len(messages))
+	for i := range messages {
+		cp := messages[i]
+		cp.Parts = append([]WirePart(nil), messages[i].Parts...)
+		out[i] = cp
+	}
+	for i := len(out) - 1; i >= 0; i-- {
+		for j := len(out[i].Parts) - 1; j >= 0; j-- {
+			p := out[i].Parts[j]
+			if p.Type != "image" {
+				continue
+			}
+			size := len(p.Data)
+			if size > 10*1024*1024 || total+size > requestImageBudget {
+				out[i].Parts[j] = WirePart{Type: "text", Text: "[image omitted: request image budget exceeded; older images are dropped first]"}
+				dropped++
+				continue
+			}
+			total += size
+		}
+	}
+	return out, dropped
+}
+
 // trimLargeToolResults keeps tool pairing intact and only shortens bodies.
 func trimLargeToolResults(messages []WireMessage, limit int) []WireMessage {
 	out := make([]WireMessage, len(messages))
