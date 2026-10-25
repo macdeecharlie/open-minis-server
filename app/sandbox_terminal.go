@@ -26,12 +26,13 @@ type terminal struct {
 }
 
 type terminalManager struct {
-	mu    sync.Mutex
-	terms map[string]*terminal
+	mu      sync.Mutex
+	terms   map[string]*terminal
+	mountNS bool
 }
 
-func newTerminalManager() *terminalManager {
-	return &terminalManager{terms: map[string]*terminal{}}
+func newTerminalManager(mountNS bool) *terminalManager {
+	return &terminalManager{terms: map[string]*terminal{}, mountNS: mountNS}
 }
 
 func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, error) {
@@ -51,18 +52,30 @@ func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, er
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("/bin/bash", "-l")
+	var cmd *exec.Cmd
+	home := sb.Workspace()
+	if m.mountNS {
+		cmd = exec.Command("unshare", "-m", "--propagation", "private",
+			"/usr/local/bin/minis-session-exec", "/bin/bash", "-l")
+		home = "/var/minis/workspace"
+	} else {
+		cmd = exec.Command("/bin/bash", "-l")
+	}
 	cmd.Dir = sb.Workspace()
-	cmd.Env = []string{
+	env := append(os.Environ(),
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-		"HOME=" + sb.Workspace(),
-		"PWD=" + sb.Workspace(),
+		"HOME="+home,
+		"PWD="+home,
 		"TERM=xterm-256color",
 		"LANG=C.UTF-8",
 		"LC_ALL=C.UTF-8",
-		"MINIS_SESSION_ID=" + sessionID,
-		"MINIS_WORKSPACE=" + sb.Workspace(),
+		"MINIS_SESSION_ID="+sessionID,
+		"MINIS_WORKSPACE="+home,
+	)
+	if m.mountNS {
+		env = append(env, "MINIS_SESSION_ROOT="+sb.root)
 	}
+	cmd.Env = env
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
 		return nil, err

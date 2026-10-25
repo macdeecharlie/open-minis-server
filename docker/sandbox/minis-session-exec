@@ -1,0 +1,23 @@
+#!/bin/sh
+# Run one command in a private mount namespace with the session's real
+# directories bound at the same virtual paths the official app uses. Without
+# this, binaries and scripts that open /var/minis/... internally (MCP clients,
+# user scripts, language runtimes) would see an empty directory, because the
+# server's path rewriting only touches the command string.
+set -e
+
+if [ -z "$MINIS_SESSION_ROOT" ] || [ ! -d "$MINIS_SESSION_ROOT" ]; then
+    echo "minis-session-exec: MINIS_SESSION_ROOT is missing or invalid" >&2
+    exit 111
+fi
+
+mount --make-rprivate /
+mkdir -p /var/minis/workspace /var/minis/attachments /var/minis/offloads \
+    /var/minis/browser /var/minis/mcp-servers
+mount --bind "$MINIS_SESSION_ROOT/workspace" /var/minis/workspace
+mount --bind "$MINIS_SESSION_ROOT/attachments" /var/minis/attachments
+mount --bind "$MINIS_SESSION_ROOT/offloads" /var/minis/offloads
+mount --bind "$MINIS_SESSION_ROOT/browser" /var/minis/browser
+mount --bind /workspace/global/mcp-servers /var/minis/mcp-servers
+cd /var/minis/workspace
+exec "$@"

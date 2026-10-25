@@ -288,17 +288,43 @@ func (s *Sandbox) RunShell(ctx context.Context, command string, timeout time.Dur
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, "/bin/sh", "-c", s.rewriteCommand(command))
-	cmd.Dir = s.workspace
+	shellCommand := command
+	workspace := s.workspace
+	home := s.workspace
+	if s.cfg.MountNamespace {
+		// The sandbox runs in a private mount namespace with the real session
+		// directories bound at /var/minis/... so scripts and binaries resolve
+		// the same paths as the official app. Do not rewrite the command text:
+		// the paths are real inside that namespace.
+		cmd := exec.CommandContext(runCtx, "unshare", "-m", "--propagation", "private",
+			"/usr/local/bin/minis-session-exec", "/bin/sh", "-c", command)
+		cmd.Env = append(os.Environ(),
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"HOME=/var/minis/workspace",
+			"PWD=/var/minis/workspace",
+			"MINIS_WORKSPACE=/var/minis/workspace",
+			"MINIS_SESSION_ID="+s.sessionID,
+			"MINIS_SESSION_ROOT="+s.root,
+			"LANG=C.UTF-8",
+			"TERM=dumb",
+		)
+		return s.runPreparedCommand(runCtx, cmd, timeout, emit)
+	}
+	cmd := exec.CommandContext(runCtx, "/bin/sh", "-c", s.rewriteCommand(shellCommand))
+	cmd.Dir = workspace
 	cmd.Env = []string{
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-		"HOME=" + s.workspace,
-		"PWD=" + s.workspace,
-		"MINIS_WORKSPACE=" + s.workspace,
+		"HOME=" + home,
+		"PWD=" + workspace,
+		"MINIS_WORKSPACE=" + workspace,
 		"MINIS_SESSION_ID=" + s.sessionID,
 		"LANG=C.UTF-8",
 		"TERM=dumb",
 	}
+	return s.runPreparedCommand(runCtx, cmd, timeout, emit)
+}
+
+func (s *Sandbox) runPreparedCommand(runCtx context.Context, cmd *exec.Cmd, timeout time.Duration, emit func(string)) (ShellResult, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if s.uid >= 0 {
 		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(s.uid), Gid: uint32(s.gid)}
@@ -363,7 +389,7 @@ func (s *Sandbox) RunShell(ctx context.Context, command string, timeout time.Dur
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()
 	}
-	if errors.Is(runCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		res.TimedOut = true
 		res.ExitCode = -1
 		if res.Output != "" {
@@ -373,7 +399,6 @@ func (s *Sandbox) RunShell(ctx context.Context, command string, timeout time.Dur
 	}
 	return res, nil
 }
-
 func (s *Sandbox) ReadFile(p string, offset int, lines int, maxLength int) (string, error) {
 	path, err := s.virtualPath(p)
 	if err != nil {

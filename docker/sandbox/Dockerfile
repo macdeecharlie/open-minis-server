@@ -46,13 +46,15 @@ RUN apt-get update \
         xz-utils \
         zip \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /workspace/sessions /workspace/global/mcp-servers /var/minis /root \
-    && ln -s /workspace/global/mcp-servers /var/minis/mcp-servers
+    && mkdir -p /workspace/sessions /workspace/global/mcp-servers /root \
+        /var/minis/workspace /var/minis/attachments /var/minis/offloads \
+        /var/minis/browser /var/minis/mcp-servers
 
 COPY --from=build /out/minis-server /usr/local/bin/minis-server
+COPY docker/sandbox/minis-session-exec /usr/local/bin/minis-session-exec
 COPY docker/sandbox/mcp-cli/bin/minis-mcp-cli /usr/local/bin/minis-mcp-cli
 COPY docker/sandbox/mcp-cli/lib/ /usr/local/lib/minis-mcp-cli/
-RUN chmod +x /usr/local/bin/minis-mcp-cli
+RUN chmod +x /usr/local/bin/minis-mcp-cli /usr/local/bin/minis-session-exec
 # Agent-facing CLI names, dispatched by argv[0] in main(). They replace the
 # PRoot native_offload handlers with server-backed tools.
 RUN for name in minis-sessions-cli minis-config minis-model-use minis-scheduled; do \

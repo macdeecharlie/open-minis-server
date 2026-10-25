@@ -550,7 +550,7 @@ func TestSandboxAgentHealth(t *testing.T) {
 func TestSandboxTerminalPTY(t *testing.T) {
 	agent := &sandboxAgent{
 		token: "t", workRoot: t.TempDir(), maxOutput: 10000,
-		terminals: newTerminalManager(),
+		terminals: newTerminalManager(false),
 	}
 	ts := httptest.NewServer(agent.handler())
 	defer ts.Close()
@@ -1191,7 +1191,7 @@ func TestSandboxFileOperations(t *testing.T) {
 }
 
 func TestRemoteSandboxFileOperations(t *testing.T) {
-	agent := &sandboxAgent{token: "t", workRoot: t.TempDir(), maxOutput: 1_000_000, terminals: newTerminalManager()}
+	agent := &sandboxAgent{token: "t", workRoot: t.TempDir(), maxOutput: 1_000_000, terminals: newTerminalManager(false)}
 	ts := httptest.NewServer(agent.handler())
 	defer ts.Close()
 	sb, err := NewRemoteSandbox(SandboxConfig{Mode: "agent", AgentURL: ts.URL, AgentToken: "t"}, "sess-remote-ops")
@@ -1525,5 +1525,34 @@ func TestCompletedRunReplay(t *testing.T) {
 	raw, _ := io.ReadAll(eresp.Body)
 	if !strings.Contains(string(raw), "finished-replay") || !strings.Contains(string(raw), "event: done") {
 		t.Fatalf("completed replay = %s", raw)
+	}
+}
+
+func TestOpenAIRequestParameters(t *testing.T) {
+	var body map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	p := &openAIProvider{cfg: &Provider{ID: "o", Kind: "openai", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model:     &Model{ID: "gpt-5.6-sol", SupportsReasoning: true},
+		Messages:  []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+		Thinking:  "ultra",
+		MaxTokens: 100,
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["max_completion_tokens"]; !ok {
+		t.Fatalf("gpt-5 request did not use max_completion_tokens: %+v", body)
+	}
+	if body["reasoning_effort"] != "high" {
+		t.Fatalf("reasoning_effort = %v", body["reasoning_effort"])
+	}
+	if _, ok := body["max_tokens"]; ok {
+		t.Fatalf("request sent both token fields: %+v", body)
 	}
 }

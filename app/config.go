@@ -47,14 +47,15 @@ type UpdateConfig struct {
 }
 
 type SandboxConfig struct {
-	Mode          string `json:"mode,omitempty"` // "local" | "agent"
-	AgentURL      string `json:"agent_url,omitempty"`
-	AgentToken    string `json:"agent_token,omitempty"`
-	AgentTokenEnv string `json:"agent_token_env,omitempty"`
-	WorkRoot      string `json:"work_root,omitempty"`
-	GlobalRoot    string `json:"global_root,omitempty"`
-	ShellUser     string `json:"shell_user,omitempty"`
-	MaxOutput     int    `json:"max_output_bytes,omitempty"`
+	Mode           string `json:"mode,omitempty"` // "local" | "agent"
+	AgentURL       string `json:"agent_url,omitempty"`
+	AgentToken     string `json:"agent_token,omitempty"`
+	AgentTokenEnv  string `json:"agent_token_env,omitempty"`
+	WorkRoot       string `json:"work_root,omitempty"`
+	GlobalRoot     string `json:"global_root,omitempty"`
+	MountNamespace bool   `json:"mount_namespace,omitempty"`
+	ShellUser      string `json:"shell_user,omitempty"`
+	MaxOutput      int    `json:"max_output_bytes,omitempty"`
 }
 
 const (

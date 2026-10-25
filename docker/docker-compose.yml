@@ -42,6 +42,7 @@ services:
       MINIS_SANDBOX_LISTEN: ":8090"
       MINIS_SANDBOX_WORK_ROOT: /workspace/sessions
       MINIS_SANDBOX_GLOBAL_ROOT: /workspace/global
+      MINIS_SANDBOX_MOUNT_NAMESPACE: "1"
       MINIS_SANDBOX_MAX_OUTPUT: "204800"
       MINIS_CLI_URL: http://open-minis-server:8080
     volumes:

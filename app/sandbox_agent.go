@@ -22,6 +22,7 @@ type sandboxAgent struct {
 	token      string
 	workRoot   string
 	globalRoot string
+	mountNS    bool
 	maxOutput  int
 	terminals  *terminalManager
 }
@@ -35,6 +36,7 @@ func runSandboxAgent() {
 	if workRoot == "" {
 		workRoot = "/workspace/sessions"
 	}
+	mountNS := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_MOUNT_NAMESPACE")) == "1"
 	globalRoot := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_GLOBAL_ROOT"))
 	if globalRoot == "" {
 		globalRoot = "/workspace/global"
@@ -48,7 +50,8 @@ func runSandboxAgent() {
 	if err := os.MkdirAll(workRoot, 0o755); err != nil {
 		log.Fatalf("create sandbox work root: %v", err)
 	}
-	agent := &sandboxAgent{token: token, workRoot: workRoot, globalRoot: globalRoot, maxOutput: maxOutput, terminals: newTerminalManager()}
+	agent := &sandboxAgent{token: token, workRoot: workRoot, globalRoot: globalRoot,
+		mountNS: mountNS, maxOutput: maxOutput, terminals: newTerminalManager(mountNS)}
 	listen := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_LISTEN"))
 	if listen == "" {
 		listen = ":8090"
@@ -140,9 +143,10 @@ func (a *sandboxAgent) sandboxFor(req sandboxRequest) (*Sandbox, error) {
 		return nil, fmt.Errorf("invalid session id")
 	}
 	return NewSandbox(SandboxConfig{
-		WorkRoot:   a.workRoot,
-		GlobalRoot: a.globalRoot,
-		MaxOutput:  a.maxOutput,
+		WorkRoot:       a.workRoot,
+		GlobalRoot:     a.globalRoot,
+		MountNamespace: a.mountNS,
+		MaxOutput:      a.maxOutput,
 		// No ShellUser: commands run as root inside this dedicated container,
 		// which is the point of the full-distro execution environment.
 	}, req.SessionID)
