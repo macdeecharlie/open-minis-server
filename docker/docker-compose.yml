@@ -74,5 +74,6 @@ networks:
     external: true
   sandbox_net:
     external: true
+    name: minis_sandbox_net
   internal:
     external: true
