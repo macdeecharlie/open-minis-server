@@ -1,4 +1,4 @@
-# Add to the Caddyfile on the VPS. Caddy and this container share minis_net.
+# Add to the Caddyfile on the VPS. Caddy reaches minis-proxy on the internal network.
 minis.gtoat.top {
-	reverse_proxy open-minis-server:8080
+	reverse_proxy minis-proxy:8080
 }

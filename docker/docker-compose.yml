@@ -21,9 +21,23 @@ services:
     expose:
       - "8080"
 
+  # A one-target TCP forwarder. Caddy talks to this, and this talks only to the
+  # server. The agent container never shares a Docker network with Caddy, so a
+  # prompt-injected shell command cannot use Caddy's public listener as a
+  # gateway into the VPS's other containers.
+  minis-proxy:
+    image: alpine/socat:latest
+    container_name: minis-proxy
+    restart: unless-stopped
+    command: TCP-LISTEN:8080,fork,reuseaddr TCP:open-minis-server:8080
+    networks:
+      - minis_net
+      - internal
+    expose:
+      - "8080"
+
 networks:
-  # A dedicated network for the server and Caddy only. The server's shell
-  # tools must not be able to reach the other containers on the `internal`
-  # network. Caddy is attached to both networks.
   minis_net:
+    external: true
+  internal:
     external: true

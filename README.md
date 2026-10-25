@@ -70,21 +70,22 @@ cd /opt/open-minis-server/docker
 sudo docker compose up -d --build
 ```
 
-The compose example expects a dedicated external `minis_net` network shared
-with Caddy. It deliberately does **not** join the shared `internal` network:
-the agent's shell tools must not be able to reach unrelated containers. Create
-the network and attach Caddy once:
+The compose example runs two containers: the agent and a one-target `socat`
+forwarder. The agent joins only `minis_net`; the forwarder joins `minis_net`
+and the shared `internal` network, and forwards only to `open-minis-server`.
+Caddy stays on `internal` and proxies to the forwarder. The agent therefore
+never shares a network with Caddy, so a prompt-injected shell command cannot
+use Caddy's public listener as a gateway to other services on the VPS.
 
 ```sh
 sudo docker network create minis_net
-sudo docker network connect minis_net caddy
 ```
 
-If Caddy is recreated, reconnect it. Add this to the Caddyfile:
+Add this to the Caddyfile:
 
 ```caddy
 minis.gtoat.top {
-    reverse_proxy open-minis-server:8080
+    reverse_proxy minis-proxy:8080
 }
 ```
 
