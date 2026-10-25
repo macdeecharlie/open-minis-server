@@ -259,6 +259,24 @@ func (r *remoteSandbox) Upload(p string, data []byte) error {
 	return nil
 }
 
+func (r *remoteSandbox) Delete(p string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return r.postJSON(ctx, "/v1/files/delete", map[string]any{"session_id": r.session, "path": p}, nil)
+}
+
+func (r *remoteSandbox) Rename(from, to string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return r.postJSON(ctx, "/v1/files/rename", map[string]any{"session_id": r.session, "from": from, "to": to}, nil)
+}
+
+func (r *remoteSandbox) Mkdir(p string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return r.postJSON(ctx, "/v1/files/mkdir", map[string]any{"session_id": r.session, "path": p}, nil)
+}
+
 func (r *remoteSandbox) RemoveSession() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

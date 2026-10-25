@@ -1152,3 +1152,112 @@ func TestStoredCompactionIsReused(t *testing.T) {
 		t.Fatal("applied a summary whose anchor is absent")
 	}
 }
+
+func TestSandboxFileOperations(t *testing.T) {
+	sb, err := NewSandbox(SandboxConfig{WorkRoot: t.TempDir(), MaxOutput: 1_000_000}, "sess-ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.Mkdir("/var/minis/workspace/a/b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.WriteFile("/var/minis/workspace/a/b/x.txt", "one", false, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.Rename("/var/minis/workspace/a/b/x.txt", "/var/minis/workspace/a/y.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := sb.ReadFile("/var/minis/workspace/a/y.txt", 1, 0, 100); err != nil || !strings.Contains(got, "one") {
+		t.Fatalf("renamed read = %q err=%v", got, err)
+	}
+	if err := sb.Delete("/var/minis/workspace/a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sb.ListDir("/var/minis/workspace/a"); err == nil {
+		t.Fatal("deleted directory still lists")
+	}
+	if err := sb.Delete("/var/minis/workspace"); err == nil {
+		t.Fatal("workspace root was deleted")
+	}
+}
+
+func TestRemoteSandboxFileOperations(t *testing.T) {
+	agent := &sandboxAgent{token: "t", workRoot: t.TempDir(), maxOutput: 1_000_000, terminals: newTerminalManager()}
+	ts := httptest.NewServer(agent.handler())
+	defer ts.Close()
+	sb, err := NewRemoteSandbox(SandboxConfig{Mode: "agent", AgentURL: ts.URL, AgentToken: "t"}, "sess-remote-ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.Mkdir("/var/minis/workspace/d"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.WriteFile("/var/minis/workspace/d/a.txt", "a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.Rename("/var/minis/workspace/d/a.txt", "/var/minis/workspace/d/b.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sb.ReadFile("/var/minis/workspace/d/b.txt", 1, 0, 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := sb.Delete("/var/minis/workspace/d"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuxiliaryOpenAIOnAnthropicProvider(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":12,\"output_tokens\":0}}}\n\n")
+		io.WriteString(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\"}}\n\n")
+		io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Aux title\"}}\n\n")
+		io.WriteString(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+		io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n")
+		io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, "mock")
+	cfg.Providers = []Provider{{
+		ID: "claude", Kind: "anthropic", BaseURL: upstream.URL, APIKey: "k",
+		Models: []Model{{ID: "claude-1", Name: "Claude", ContextWindow: 200000, MaxOutputTokens: 8192}},
+	}}
+	cfg.DefaultModel = "claude-1"
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	body := `{"model":"claude-1","stream":true,"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"title this"}]}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	text := string(raw)
+	if !strings.Contains(text, "Aux title") || !strings.Contains(text, "[DONE]") || !strings.Contains(text, "chat.completion.chunk") {
+		t.Fatalf("translated stream = %s", text)
+	}
+
+	body = `{"model":"claude-1","messages":[{"role":"user","content":"title this"}]}`
+	req, _ = http.NewRequest(http.MethodPost, ts.URL+"/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp2.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fmt.Sprint(out), "Aux title") {
+		t.Fatalf("translated completion = %+v", out)
+	}
+}

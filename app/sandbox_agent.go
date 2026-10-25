@@ -73,6 +73,9 @@ func (a *sandboxAgent) handler() http.Handler {
 	mux.Handle("POST /v1/files/raw", a.auth(http.HandlerFunc(a.rawFile)))
 	mux.Handle("POST /v1/files/upload", a.auth(http.HandlerFunc(a.uploadFile)))
 	mux.Handle("POST /v1/session/delete", a.auth(http.HandlerFunc(a.deleteSession)))
+	mux.Handle("POST /v1/files/delete", a.auth(http.HandlerFunc(a.deleteFile)))
+	mux.Handle("POST /v1/files/rename", a.auth(http.HandlerFunc(a.renameFile)))
+	mux.Handle("POST /v1/files/mkdir", a.auth(http.HandlerFunc(a.mkdir)))
 	mux.Handle("POST /v1/terminal", a.terminalHandler(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/input", a.terminalInput(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/resize", a.terminalResize(a.terminals))
@@ -301,6 +304,70 @@ func (a *sandboxAgent) writeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *sandboxAgent) deleteFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		sandboxRequest
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	sb, err := a.sandboxFor(req.sandboxRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.Delete(req.Path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *sandboxAgent) renameFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		sandboxRequest
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	sb, err := a.sandboxFor(req.sandboxRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.Rename(req.From, req.To); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *sandboxAgent) mkdir(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		sandboxRequest
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	sb, err := a.sandboxFor(req.sandboxRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.Mkdir(req.Path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *sandboxAgent) deleteSession(w http.ResponseWriter, r *http.Request) {

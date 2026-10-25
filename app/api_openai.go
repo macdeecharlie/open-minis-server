@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -31,8 +32,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if provider.Kind == "anthropic" {
-		writeError(w, http.StatusNotImplemented, "this server's Anthropic provider supports the agent endpoint only; use an OpenAI-compatible provider for auxiliary calls")
+	if provider.Kind == "anthropic" || provider.Kind == "gemini" {
+		s.handleAuxiliaryOpenAI(w, r, provider, meta.Model, body)
 		return
 	}
 	if provider.Kind == "mock" {
@@ -118,4 +119,207 @@ func isHopByHopHeader(k string) bool {
 		return true
 	}
 	return false
+}
+
+type openAIChatRequest struct {
+	Model         string            `json:"model"`
+	Messages      []json.RawMessage `json:"messages"`
+	Tools         []ToolDef         `json:"tools"`
+	MaxTokens     int               `json:"max_tokens"`
+	MaxCompletion int               `json:"max_completion_tokens"`
+	Stream        bool              `json:"stream"`
+}
+
+type openAIChatMessage struct {
+	Role      string          `json:"role"`
+	Content   json.RawMessage `json:"content"`
+	ToolCalls []struct {
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Function struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	} `json:"tool_calls"`
+	ToolCallID string `json:"tool_call_id"`
+	Name       string `json:"name"`
+}
+
+func openAIWireMessages(raw []json.RawMessage) (system string, out []WireMessage) {
+	for _, r := range raw {
+		var m openAIChatMessage
+		if err := json.Unmarshal(r, &m); err != nil {
+			continue
+		}
+		switch m.Role {
+		case "system", "developer":
+			system += openAIContentText(m.Content)
+		case "tool":
+			out = append(out, WireMessage{Role: "user", Parts: []WirePart{{
+				Type: "tool_result", ID: m.ToolCallID, Name: m.Name,
+				Content: openAIContentText(m.Content),
+			}}})
+		default:
+			msg := WireMessage{Role: m.Role}
+			if text := openAIContentText(m.Content); text != "" {
+				msg.Parts = append(msg.Parts, WirePart{Type: "text", Text: text})
+			}
+			var images []WirePart
+			var parts []struct {
+				Type     string `json:"type"`
+				Text     string `json:"text"`
+				ImageURL *struct {
+					URL string `json:"url"`
+				} `json:"image_url"`
+			}
+			if json.Unmarshal(m.Content, &parts) == nil {
+				for _, p := range parts {
+					if p.Type == "image_url" && p.ImageURL != nil {
+						if mime, data, ok := parseDataURL(p.ImageURL.URL); ok {
+							images = append(images, WirePart{Type: "image", Mime: mime, Data: data})
+						}
+					}
+				}
+			}
+			msg.Parts = append(msg.Parts, images...)
+			for _, tc := range m.ToolCalls {
+				args := json.RawMessage(tc.Function.Arguments)
+				if len(args) == 0 || !json.Valid(args) {
+					args = json.RawMessage(`{}`)
+				}
+				msg.Parts = append(msg.Parts, WirePart{Type: "tool_use", ID: tc.ID, Name: tc.Function.Name, Args: args})
+			}
+			if len(msg.Parts) > 0 {
+				out = append(out, msg)
+			}
+		}
+	}
+	return system, out
+}
+
+func openAIContentText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &parts) == nil {
+		var b strings.Builder
+		for _, p := range parts {
+			if p.Type == "text" {
+				b.WriteString(p.Text)
+			}
+		}
+		return b.String()
+	}
+	return ""
+}
+
+// handleAuxiliaryOpenAI translates the OpenAI-shaped auxiliary endpoints
+// (title generation, quick tests, the app's compaction) onto native Anthropic
+// and Gemini providers. Without this, every chat using those providers failed
+// at title generation even though the agent loop itself worked.
+func (s *Server) handleAuxiliaryOpenAI(w http.ResponseWriter, r *http.Request, provider *Provider, modelID string, body []byte) {
+	var req openAIChatRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	_, model, err := s.cfg.ResolveModel(modelID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	system, messages := openAIWireMessages(req.Messages)
+	maxTokens := req.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = req.MaxCompletion
+	}
+	client := s.providerFor(provider)
+	if req.Stream {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "streaming unsupported")
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache, no-transform")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+		id := newID("chatcmpl")
+		writeChunk := func(delta map[string]any, finish string) bool {
+			payload, _ := json.Marshal(map[string]any{
+				"id": id, "object": "chat.completion.chunk", "created": nowMillis() / 1000,
+				"model":   model.ID,
+				"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}},
+			})
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+				return false
+			}
+			flusher.Flush()
+			return true
+		}
+		writeChunk(map[string]any{"role": "assistant", "content": ""}, "")
+		var text strings.Builder
+		_, err := client.Stream(r.Context(), ProviderRequest{
+			Model: model, System: system, Messages: messages, Tools: req.Tools,
+			MaxTokens: maxTokens, Thinking: "off",
+		}, func(ev ProviderEvent) error {
+			switch ev.Kind {
+			case "text":
+				text.WriteString(ev.Text)
+				if !writeChunk(map[string]any{"content": ev.Text}, "") {
+					return io.ErrClosedPipe
+				}
+			case "thinking":
+				if ev.Text != "" {
+					if !writeChunk(map[string]any{"reasoning_content": ev.Text}, "") {
+						return io.ErrClosedPipe
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil && r.Context().Err() == nil {
+			writeChunk(map[string]any{"content": "\n\n[provider error: " + err.Error() + "]"}, "stop")
+		} else {
+			writeChunk(map[string]any{}, "stop")
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		flusher.Flush()
+		return
+	}
+	var text strings.Builder
+	res, err := client.Stream(r.Context(), ProviderRequest{
+		Model: model, System: system, Messages: messages, Tools: req.Tools,
+		MaxTokens: maxTokens, Thinking: "off",
+	}, func(ev ProviderEvent) error {
+		if ev.Kind == "text" {
+			text.WriteString(ev.Text)
+		}
+		return nil
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": newID("chatcmpl"), "object": "chat.completion", "created": nowMillis() / 1000,
+		"model": model.ID,
+		"choices": []map[string]any{{
+			"index": 0, "message": map[string]any{"role": "assistant", "content": text.String()},
+			"finish_reason": res.StopReason,
+		}},
+		"usage": map[string]any{
+			"prompt_tokens": res.Usage.InputTokens, "completion_tokens": res.Usage.OutputTokens,
+			"total_tokens": res.Usage.InputTokens + res.Usage.OutputTokens,
+		},
+	})
 }

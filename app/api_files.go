@@ -76,6 +76,70 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "bytes": len(data)})
 }
 
+func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionID string `json:"session_id"`
+		Path      string `json:"path"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sb, err := s.fileSandbox(req.SessionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.Delete(req.Path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleFileRename(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionID string `json:"session_id"`
+		From      string `json:"from"`
+		To        string `json:"to"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sb, err := s.fileSandbox(req.SessionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.Rename(req.From, req.To); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleFileMkdir(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionID string `json:"session_id"`
+		Path      string `json:"path"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sb, err := s.fileSandbox(req.SessionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.Mkdir(req.Path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func jsonDecodeLimited(w http.ResponseWriter, r *http.Request, out any, limit int64) error {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	return dec.Decode(out)

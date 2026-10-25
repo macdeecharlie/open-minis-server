@@ -44,6 +44,9 @@ type ToolSandbox interface {
 	ListDir(p string) ([]FileEntry, error)
 	ReadRaw(p string) ([]byte, string, error)
 	Upload(p string, data []byte) error
+	Delete(p string) error
+	Rename(from, to string) error
+	Mkdir(p string) error
 	RemoveSession() error
 }
 
@@ -555,6 +558,51 @@ func (s *Sandbox) ReadRaw(p string) ([]byte, string, error) {
 		contentType = detected
 	}
 	return b, contentType, nil
+}
+
+func (s *Sandbox) Delete(p string) error {
+	path, err := s.virtualPath(p)
+	if err != nil {
+		return err
+	}
+	if path == s.root || path == s.workspace || path == s.attachments {
+		return errors.New("refusing to delete a session root")
+	}
+	return os.RemoveAll(path)
+}
+
+func (s *Sandbox) Rename(from, to string) error {
+	src, err := s.virtualPath(from)
+	if err != nil {
+		return err
+	}
+	dst, err := s.virtualPath(to)
+	if err != nil {
+		return err
+	}
+	if src == s.root || dst == s.root {
+		return errors.New("refusing to rename a session root")
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return err
+	}
+	s.own(dst)
+	return nil
+}
+
+func (s *Sandbox) Mkdir(p string) error {
+	path, err := s.virtualPath(p)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return err
+	}
+	s.own(path)
+	return nil
 }
 
 func (s *Sandbox) Upload(p string, data []byte) error {
