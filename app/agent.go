@@ -368,7 +368,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		}
 	}
 
-	messages := append([]WireMessage(nil), req.Messages...)
+	messages := repairToolPairing(append([]WireMessage(nil), req.Messages...))
 	if summary, anchor := s.store.Summary(sessionID); summary != "" {
 		if applied, ok := applyStoredCompaction(messages, summary, anchor); ok {
 			messages = applied
@@ -414,6 +414,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		}
 		if steers := run.takeSteers(); len(steers) > 0 {
 			messages = append(messages, steers...)
+			messages = repairToolPairing(messages)
 		}
 		if estimated := estimatedRequestTokens(system, messages, tools); estimated >= 100_000 &&
 			(personaReminderAt == 0 || estimated >= personaReminderAt+100_000) &&

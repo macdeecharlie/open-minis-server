@@ -435,3 +435,83 @@ func trimLargeToolResults(messages []WireMessage, limit int) []WireMessage {
 	}
 	return out
 }
+
+// repairToolPairing makes a client history safe for providers that reject
+// orphaned tool calls or results. It keeps every valid pair, drops results
+// whose call is absent, and fills a missing result immediately after the
+// assistant turn so role alternation and the provider's "tool result follows
+// tool call" requirement both hold.
+func repairToolPairing(messages []WireMessage) []WireMessage {
+	uses := map[string]bool{}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		for _, p := range m.Parts {
+			if p.Type == "tool_use" && p.ID != "" {
+				uses[p.ID] = true
+			}
+		}
+	}
+	out := make([]WireMessage, 0, len(messages)+2)
+	for i := 0; i < len(messages); i++ {
+		m := messages[i]
+		if m.Role == "user" {
+			parts := make([]WirePart, 0, len(m.Parts))
+			for _, p := range m.Parts {
+				if p.Type == "tool_result" && (p.ID == "" || !uses[p.ID]) {
+					continue
+				}
+				parts = append(parts, p)
+			}
+			if len(parts) == 0 {
+				continue
+			}
+			m.Parts = parts
+			out = append(out, m)
+			continue
+		}
+		out = append(out, m)
+		if m.Role != "assistant" {
+			continue
+		}
+		var missing []WirePart
+		for _, p := range m.Parts {
+			if p.Type != "tool_use" || p.ID == "" {
+				continue
+			}
+			found := false
+			windowEnd := i + 3
+			if windowEnd > len(messages) {
+				windowEnd = len(messages)
+			}
+			for j := i + 1; j < windowEnd; j++ {
+				for _, q := range messages[j].Parts {
+					if q.Type == "tool_result" && q.ID == p.ID {
+						found = true
+					}
+				}
+			}
+			if !found {
+				missing = append(missing, WirePart{
+					Type: "tool_result", ID: p.ID, Name: p.Name, IsError: true,
+					Content: "[tool result missing: the previous turn was interrupted before it returned]",
+				})
+			}
+		}
+		if len(missing) == 0 {
+			continue
+		}
+		if i+1 < len(messages) && messages[i+1].Role == "user" {
+			// Merge into the next user turn instead of adding a second user
+			// message in a row.
+			next := messages[i+1]
+			next.Parts = append(append([]WirePart(nil), missing...), next.Parts...)
+			out = append(out, next)
+			i++
+		} else {
+			out = append(out, WireMessage{Role: "user", Parts: missing})
+		}
+	}
+	return out
+}

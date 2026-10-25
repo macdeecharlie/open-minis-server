@@ -1643,3 +1643,34 @@ func TestCancelStopsRun(t *testing.T) {
 		t.Fatalf("late tool result HTTP %d, want 404 after cancel", pres.StatusCode)
 	}
 }
+
+func TestRepairToolPairing(t *testing.T) {
+	messages := []WireMessage{
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "go"}}},
+		{Role: "assistant", Parts: []WirePart{{Type: "tool_use", ID: "a", Name: "shell_execute", Args: json.RawMessage(`{"command":"ls"}`)}}},
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "interrupted"}}},
+		{Role: "assistant", Parts: []WirePart{{Type: "text", Text: "done"}}},
+	}
+	out := repairToolPairing(messages)
+	if len(out) != 4 {
+		t.Fatalf("out = %+v", out)
+	}
+	found := false
+	for _, m := range out {
+		for _, p := range m.Parts {
+			if p.Type == "tool_result" && p.ID == "a" && p.IsError {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing tool result was not repaired")
+	}
+	orphan := []WireMessage{
+		{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: "gone", Name: "x", Content: "stale"}, {Type: "text", Text: "hi"}}},
+	}
+	out = repairToolPairing(orphan)
+	if len(out) != 1 || len(out[0].Parts) != 1 || out[0].Parts[0].Type != "text" {
+		t.Fatalf("orphan result was not dropped: %+v", out)
+	}
+}
