@@ -101,7 +101,7 @@ app/src/main/cpp/jieba_jni.cpp,android,native,212,8222,device-native,device-only
 app/src/main/cpp/pty_bridge.c,android,native,327,12331,device-native,device-only,JNI/native helper
 app/src/main/java/com/openminis/app/AppBuildInfo.kt,android,kotlin,50,1777,ui,ui-only,build/version display
 app/src/main/java/com/openminis/app/MainActivity.kt,android,kotlin,826,42312,device-wiring,device-only,application/activity wiring
-app/src/main/java/com/openminis/app/MinisApp.kt,android,kotlin,1300,74663,device-wiring,device-only,application/activity wiring
+app/src/main/java/com/openminis/app/MinisApp.kt,android,kotlin,1309,75128,device-wiring,device-only,application/activity wiring
 app/src/main/java/com/openminis/app/accessibility/AccessibilityRecoveryManager.kt,android,kotlin,356,15501,device,device-only,package
 app/src/main/java/com/openminis/app/accessibility/MinisAccessibilityService.kt,android,kotlin,274,11709,device,device-only,package
 app/src/main/java/com/openminis/app/accessibility/NodeRegistry.kt,android,kotlin,57,1757,device,device-only,package
@@ -492,9 +492,9 @@ app/src/main/java/com/openminis/app/scheduled/ScheduledWait.kt,android,kotlin,16
 app/src/main/java/com/openminis/app/server/RemoteTerminalSession.kt,android,kotlin,155,6314,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/server/ServerAgentClient.kt,android,kotlin,436,20465,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/server/ServerBootstrap.kt,android,kotlin,120,5718,server-bridge,implemented,file override
-app/src/main/java/com/openminis/app/server/ServerFileSync.kt,android,kotlin,155,7102,server-bridge,implemented,file override
+app/src/main/java/com/openminis/app/server/ServerFileSync.kt,android,kotlin,161,7555,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/server/ServerSettings.kt,android,kotlin,37,1376,server-bridge,implemented,file override
-app/src/main/java/com/openminis/app/server/ServerWire.kt,android,kotlin,102,4536,server-bridge,implemented,file override
+app/src/main/java/com/openminis/app/server/ServerWire.kt,android,kotlin,111,4871,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/service/AgentForegroundService.kt,android,kotlin,1629,86171,device,device-only,package
 app/src/main/java/com/openminis/app/service/AgentNotificationContent.kt,android,kotlin,276,12794,device,device-only,package
 app/src/main/java/com/openminis/app/service/BackgroundInterruptionTracker.kt,android,kotlin,55,1812,device,device-only,package
@@ -603,7 +603,7 @@ app/src/main/java/com/openminis/app/ui/chat/ChatScreenHelpers.kt,android,kotlin,
 app/src/main/java/com/openminis/app/ui/chat/ChatToolDetailUI.kt,android,kotlin,1681,92729,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/chat/ChatToolFormatting.kt,android,kotlin,190,8265,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/chat/ChatUserMessageUI.kt,android,kotlin,807,41083,ui,ui-only,package
-app/src/main/java/com/openminis/app/ui/chat/ChatViewModel.kt,android,kotlin,20952,1204924,server+ui-state,partial,ui logic override
+app/src/main/java/com/openminis/app/ui/chat/ChatViewModel.kt,android,kotlin,20964,1205453,server+ui-state,partial,ui logic override
 app/src/main/java/com/openminis/app/ui/chat/ChatViewModelMentionExt.kt,android,kotlin,233,9491,ui,ui-only,ui logic override
 app/src/main/java/com/openminis/app/ui/chat/ChatViewModelSlashExt.kt,android,kotlin,299,13633,ui,ui-only,ui logic override
 app/src/main/java/com/openminis/app/ui/chat/ChatViewModelStore.kt,android,kotlin,825,38908,ui,ui-only,ui logic override

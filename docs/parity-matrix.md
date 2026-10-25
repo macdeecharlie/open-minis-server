@@ -24,14 +24,14 @@ python3 scripts/android_inventory.py --mode repo --source /path/to/OpenMinis \
 
 | Scope | Files | Lines | Meaning |
 |---|---:|---:|---|
-| `android` | 2,175 | 850,979 | Delivery target; every row has an owner/status. |
+| `android` | 2,175 | 851,015 | Delivery target; every row has an owner/status. |
 | `ios-reference` | 1,314 | 1,279,362 | Behavioural reference. Out of scope for the Android build, but accounted for. |
 | `dependency` | 456 | 226,141 | Vendored upstream source (`deps/`); not OpenMinis logic. |
 | `shared` | 21 | 8,780 | Cross-platform assets used by the apps. |
 | `project` | 38 | 8,349 | Scripts, CI, docs and repository metadata. |
-| **total** | **4,004** | **2,373,611** | Every tracked/untracked source file in the official repo. |
+| **total** | **4,004** | **2,373,647** | Every tracked/untracked source file in the official repo. |
 
-Android-only snapshot: **2,179 files / 865,092 lines** (includes tests,
+Android-only snapshot: **2,179 files / 865,128 lines** (includes tests,
 resources, generated schemas and bundled assets). `unclassified` rows: **0**
 in both inventories. Files ignored by `.gitignore` (local SDK paths, build
 outputs) are intentionally not part of the accounting.
@@ -96,10 +96,11 @@ outputs) are intentionally not part of the accounting.
    server-originated headless runs use memory/skills/MCP and remove the
    structured-fragment bridge.
 3. **Agent-loop edge semantics.** The server supports steering and replay
-   (`/steer`, `/events?after=`); the Android queued-prompt UI still drains after
-   the run instead of calling `/steer`. Interrupted-tail repair, user-ask
-   recovery across process death, subagent budgets/closing nudges and
-   concurrent tool dispatch remain app-side.
+   (`/steer`, `/events?after=`), cancels on Stop, repairs orphaned tool pairs,
+   and retries idle provider streams. The Android queued-prompt UI still drains
+   after the run instead of calling `/steer`. User-ask recovery across process
+   death, subagent budgets/closing nudges and concurrent tool dispatch remain
+   app-side.
 4. **Config write confirmation.** `minis-config get` is server-backed.
    `minis-config set default_model` returns a pending token; after `user_ask`
    approval, `minis-config confirm --token` applies it and writes the config
@@ -109,12 +110,21 @@ outputs) are intentionally not part of the accounting.
    is still a one-way workspace cache, so upload/rename UI actions and
    `@file` previews need a direct remote adapter.
 6. **Backup/restore.** `.minisbak` format, crypto, merge and rclone transport
-   remain in the app; server sessions/workspaces are not included.
+   remain in the app. The workspace is mirrored locally and is included, but
+   server-only offloads/global state are not part of the phone archive.
 7. **Server/client data parity.** Session folders/groups, usage/quota
-   aggregation, config audit and model catalogs remain client-side.
+   aggregation, config audit and model catalogs remain client-side. Memory and
+   skill files are user-authored on the phone and sent as prompt fragments;
+   the server does not own those stores.
 8. **Accounting depth.** Every Android file has an owner/status, but `partial`
    rows are not yet individually linked to a server implementation and test.
    The iOS tree is accounted for as reference, not implemented.
+9. **Long-tail provider features.** Image/audio/video *output* through
+   `minis-model-use`, OpenAI Responses-only models, Anthropic thinking-block
+   replay, and provider quota APIs are not implemented server-side.
+10. **Sandbox persistence.** System packages installed with apt survive restarts
+    but not an image rebuild; project dependencies should live in the
+    workspace/venv.
 
 ## Verified so far
 
@@ -142,6 +152,13 @@ outputs) are intentionally not part of the accounting.
   server (`list`, `tools`, `call`).
 - Server file API verified end-to-end: list, upload, raw download, delete,
   rename, mkdir, and workspace removal on session delete.
+- Every shell/PTY command runs in a private mount namespace with real
+  `/var/minis/{workspace,attachments,offloads,browser,mcp-servers}` binds;
+  `pwd` is virtual, Python scripts that open the paths internally work, and
+  `/workspace` is scoped to the current session.
+- Tool results include encoded `minis_url` links; request image budget, audio
+  parts for OpenAI/Gemini, orphan tool-pair repair and provider idle timeouts
+  are covered by tests.
 - Sandbox CLI tools verified: `minis-sessions-cli list/messages`,
   `minis-config get`, `minis-model-use list/run`, `minis-scheduled list`.
 - Real `minis-model-use run` returned a live model response.
