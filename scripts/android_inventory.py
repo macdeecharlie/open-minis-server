@@ -25,11 +25,11 @@ PACKAGE_OWNER = {
     "provider": ("server", "partial"),
     "agent": ("server", "partial"),
     "config": ("server", "partial"),
-    "quota": ("server", "partial"),
+    "quota": ("device", "device-only"),
     "tools": ("server", "partial"),
     "sandbox": ("device-local-fallback", "local-fallback"),
     "scheduled": ("device-trigger+server-runner", "implemented"),
-    "auth": ("device-oauth+server-custody", "partial"),
+    "auth": ("device", "device-only"),
     "backup": ("device", "device-only"),
     "mcp": ("device+server-prompt", "partial"),
     "data": ("server+device", "partial"),
@@ -203,7 +203,7 @@ def classify_android(rel: str) -> tuple[str, str, str]:
         return "device-native", "device-only", "JNI/native helper"
     if rel.startswith("src/main/assets/"):
         if "proot" in name or "alpine-minirootfs" in name or "alpine" in name:
-            return "legacy-device-sandbox", "replaced-by-server-container", "legacy PRoot/rootfs asset"
+            return "legacy-device-sandbox", "local-fallback", "PRoot/rootfs asset for device-bound shell commands and local mode"
         return "device-assets", "device-only", "bundled runtime/UI asset"
     if rel.startswith("src/main/res/"):
         return "ui-resources", "ui-only", "Android resources"
@@ -244,6 +244,16 @@ def count_lines(path: Path, kind: str) -> int:
         return 0
 
 
+REFACTOR_PATHS = (
+    "app/src/main/java/com/openminis/app/server/",
+    "app/src/main/java/com/openminis/app/sandbox/TerminalSessionLike.kt",
+)
+
+
+def provenance_for(rel: str) -> str:
+    return "refactor" if rel.startswith(REFACTOR_PATHS) else "upstream"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", required=True, help="repository root or src/android")
@@ -255,23 +265,18 @@ def main():
     use_git = args.mode == "repo"
 
     files: list[str] = []
-    if use_git and (root / ".git").exists():
-        out = subprocess.check_output(
-            ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard"],
-            text=True,
-        )
-        files = [line for line in out.splitlines() if line.strip()]
-    else:
-        base = root if args.mode == "android" else root
-        for path in sorted(base.rglob("*")):
-            if not path.is_file():
-                continue
-            if any(part in (".git", "build", ".gradle", ".cxx", ".kotlin", "node_modules") for part in path.parts):
-                continue
-            rel = path.relative_to(base).as_posix()
-            if args.mode == "android" and not rel.startswith("app/"):
-                continue
-            files.append(rel)
+    base = android_root if args.mode == "android" else root
+    for path in sorted(base.rglob("*")):
+        if not path.is_file():
+            continue
+        if any(part in (".git", "build", ".gradle", ".cxx", ".kotlin", "node_modules") for part in path.parts):
+            continue
+        rel = path.relative_to(base).as_posix()
+        if args.mode == "android" and not rel.startswith("app/"):
+            continue
+        if rel.startswith("deps/build/"):
+            continue
+        files.append(rel)
 
     rows = []
     for rel in files:
@@ -289,6 +294,7 @@ def main():
                 "owner": owner,
                 "status": status,
                 "classification_reason": why,
+                "provenance": provenance_for(rel),
             })
             continue
         path = root / rel
@@ -305,6 +311,7 @@ def main():
             "owner": owner,
             "status": status,
             "classification_reason": why,
+            "provenance": provenance_for(rel[len("src/android/"):] if rel.startswith("src/android/") else rel),
         })
 
     out = Path(args.out)
@@ -318,6 +325,7 @@ def main():
     print("scope:", Counter(r["scope"] for r in rows).most_common())
     print("owners:", Counter(r["owner"] for r in rows).most_common())
     print("status:", Counter(r["status"] for r in rows).most_common())
+    print("provenance:", Counter(r["provenance"] for r in rows).most_common())
     total = sum(r["lines"] for r in rows)
     print("lines:", total)
     print("lines by scope:", {k: sum(r["lines"] for r in rows if r["scope"] == k) for k in sorted({r["scope"] for r in rows})})

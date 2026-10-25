@@ -1,57 +1,118 @@
 path,lines,role
+.github/workflows/test.yml,24,CI
+.gitignore,18,server/deployment file
+README.md,215,server/deployment file
 app/admin.go,183,admin config endpoints
-app/agent.go,844,"agent loop, retries, fallback, tools, replay/steer"
+app/agent.go,872,"agent loop, retries, fallback, tool dispatch, replay/steer"
 app/api_cli.go,595,minis-* CLI API
 app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
 app/api_scheduled.go,53,scheduled task API
 app/api_terminal.go,83,terminal API proxy
-app/app_test.go,1720,test suite
+app/app_test.go,1765,test suite
 app/cli.go,666,minis-* CLI implementations
 app/config.go,295,configuration and validation
-app/context.go,517,"context estimator, compaction, offload, image budget, tool repair"
+app/context.go,523,"context estimator, compaction, offload, image budget, tool-pair repair"
+app/go.mod,5,server/deployment file
+app/go.sum,2,server/deployment file
 app/main.go,88,entrypoint and role dispatch
-app/prompt.go,170,server-owned prompt assembly
-app/prompt_base.txt,90,prompt asset
-app/prompt_browser.txt,2,prompt asset
-app/prompt_memory_off.txt,6,prompt asset
-app/prompt_memory_on.txt,11,prompt asset
-app/prompt_url_browser.txt,1,prompt asset
-app/prompt_url_plain.txt,1,prompt asset
+app/open-minis-server,50884,server/deployment file
+app/prompt.go,174,server-owned prompt assembly
+app/prompt_base.txt,90,server/deployment file
+app/prompt_browser.txt,2,server/deployment file
+app/prompt_memory_off.txt,6,server/deployment file
+app/prompt_memory_on.txt,11,server/deployment file
+app/prompt_url_browser.txt,1,server/deployment file
+app/prompt_url_plain.txt,1,server/deployment file
 app/provider.go,256,"provider HTTP, SSE, idle watchdog, error classification"
-app/provider_anthropic.go,344,"Anthropic wire, thinking, prompt cache"
-app/provider_gemini.go,227,"Gemini wire, thought signatures, audio"
+app/provider_anthropic.go,352,"Anthropic wire, prompt cache"
+app/provider_gemini.go,237,"Gemini wire, thought signatures, audio"
 app/provider_mock.go,129,offline test provider
-app/provider_openai.go,371,OpenAI-compatible wire
+app/provider_openai.go,393,OpenAI-compatible wire
 app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
 app/sandbox_agent.go,506,sandbox container API
 app/sandbox_remote.go,299,server to sandbox client
-app/sandbox_terminal.go,292,PTY terminal
+app/sandbox_terminal.go,298,PTY terminal
 app/scheduled.go,474,server scheduler and headless runner
-app/server.go,479,"HTTP routes, SSE, sessions, files, terminal proxy, config"
-app/store.go,349,append-only session store
-app/tools.go,742,"tool schemas, routing, execution, minis URLs"
-app/types.go,140,wire/config/session types
+app/server.go,485,"HTTP routes, SSE, sessions, files, terminal proxy, config"
+app/store.go,348,append-only session store
+app/tools.go,738,"tool schemas, routing, execution, minis URLs"
+app/types.go,146,wire/config/session types
 app/update.go,229,private release proxy
-docker/Caddyfile.snippet,4,sandbox image / deployment
-docker/Dockerfile,38,sandbox image / deployment
-docker/docker-compose.yml,91,sandbox image / deployment
-docker/egress-firewall.sh,30,sandbox image / deployment
-docker/entrypoint.sh,91,sandbox image / deployment
-docker/minis-egress-firewall.service,14,sandbox image / deployment
-docker/sandbox/Dockerfile,67,sandbox image / deployment
-docker/sandbox/mcp-cli/bin/minis-mcp-cli,41,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/daemon.py,740,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/main.py,679,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/transport/__init__.py,0,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/transport/http.py,462,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/transport/stdio.py,159,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/utils/__init__.py,0,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/utils/config.py,196,sandbox image / deployment
-docker/sandbox/mcp-cli/lib/utils/deps.py,70,sandbox image / deployment
-docker/sandbox/minis-session-exec,27,sandbox image / deployment
-scripts/android_inventory.py,330,inventory tooling
+app/vendor/github.com/creack/pty/.editorconfig,54,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/.gitignore,4,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/.golangci.yml,324,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/Dockerfile.golang,17,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/LICENSE,23,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/README.md,107,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/asm_solaris_amd64.s,18,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/doc.go,16,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ioctl.go,28,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ioctl_bsd.go,40,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ioctl_inner.go,20,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ioctl_legacy.go,10,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ioctl_solaris.go,48,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ioctl_unsupported.go,13,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/mktypes.bash,19,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_darwin.go,68,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_dragonfly.go,83,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_freebsd.go,81,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_linux.go,54,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_netbsd.go,69,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_openbsd.go,47,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_solaris.go,171,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_unsupported.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/pty_zos.go,141,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/run.go,57,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/start.go,25,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/start_windows.go,19,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/test_crosscompile.sh,60,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/winsize.go,24,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/winsize_unix.go,35,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/winsize_unsupported.go,23,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_386.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_amd64.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_arm.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_arm64.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_dragonfly_amd64.go,17,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_freebsd_386.go,16,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_freebsd_amd64.go,17,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_freebsd_arm.go,16,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_freebsd_arm64.go,16,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_freebsd_ppc64.go,14,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_freebsd_riscv64.go,13,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_loong64.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_mipsx.go,13,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_netbsd_32bit_int.go,17,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_openbsd_32bit_int.go,13,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_ppc.go,9,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_ppc64.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_ppc64le.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_riscvx.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_s390x.go,12,vendored third-party (creack/pty)
+app/vendor/github.com/creack/pty/ztypes_sparcx.go,12,vendored third-party (creack/pty)
+app/vendor/modules.txt,3,vendored third-party (creack/pty)
+config.example.json,33,server/deployment file
+docker/Caddyfile.snippet,4,sandbox image and deployment
+docker/Dockerfile,38,sandbox image and deployment
+docker/docker-compose.yml,91,sandbox image and deployment
+docker/egress-firewall.sh,36,sandbox image and deployment
+docker/entrypoint.sh,91,sandbox image and deployment
+docker/minis-egress-firewall.service,14,sandbox image and deployment
+docker/sandbox/Dockerfile,67,sandbox image and deployment
+docker/sandbox/mcp-cli/bin/minis-mcp-cli,41,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/daemon.py,740,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/main.py,679,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/transport/__init__.py,0,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/transport/http.py,462,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/transport/stdio.py,159,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/utils/__init__.py,0,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/utils/config.py,196,bundled MCP client (from the official assets)
+docker/sandbox/mcp-cli/lib/utils/deps.py,70,bundled MCP client (from the official assets)
+docker/sandbox/minis-session-exec,27,sandbox image and deployment
 docs/agent-protocol.md,175,documentation
 docs/architecture.md,122,documentation
-docs/parity-matrix.md,169,documentation
-docs/verification.md,76,documentation
+docs/parity-matrix.md,171,documentation
+docs/verification.md,78,documentation
+scripts/android_inventory.py,338,inventory tooling
+scripts/server_inventory.py,96,inventory tooling
