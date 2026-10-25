@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -38,7 +40,7 @@ func testServer(t *testing.T, kind string) (*Server, *httptest.Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := NewServer(cfg, store)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return s, ts
@@ -348,7 +350,7 @@ func TestChatProxyRewritesAuth(t *testing.T) {
 	cfg.Providers[0].Models[0].ID = "up-1"
 	cfg.DefaultModel = "up-1"
 	store, _ := NewStore(cfg.DataDir)
-	s := NewServer(cfg, store)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/chat/completions", strings.NewReader(`{"model":"up-1","messages":[]}`))
@@ -361,5 +363,19 @@ func TestChatProxyRewritesAuth(t *testing.T) {
 	if resp.StatusCode != 200 {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("HTTP %d: %s", resp.StatusCode, b)
+	}
+}
+
+func TestSandboxRejectsSymlinkEscape(t *testing.T) {
+	dir := t.TempDir()
+	sb, err := NewSandbox(SandboxConfig{WorkRoot: dir, MaxOutput: 1000}, "sess-symlink")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/etc/passwd", filepath.Join(sb.Workspace(), "leak")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if _, err := sb.ReadFile("/var/minis/workspace/leak", 1, 0, 100); err == nil {
+		t.Fatal("symlink to /etc/passwd was accepted")
 	}
 }

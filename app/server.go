@@ -17,10 +17,11 @@ import (
 const serverVersion = "1.0.0"
 
 type Server struct {
-	cfg     *Config
-	store   *Store
-	http    *providerHTTP
-	started time.Time
+	cfg        *Config
+	configPath string
+	store      *Store
+	http       *providerHTTP
+	started    time.Time
 
 	runsMu sync.Mutex
 	runs   map[string]*Run
@@ -35,9 +36,10 @@ type updateCacheEntry struct {
 	expiresAt time.Time
 }
 
-func NewServer(cfg *Config, store *Store) *Server {
+func NewServer(cfg *Config, store *Store, configPath string) *Server {
 	return &Server{
 		cfg:         cfg,
+		configPath:  configPath,
 		store:       store,
 		http:        newProviderHTTP(),
 		started:     time.Now(),
@@ -58,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleGetSession)))
 	mux.Handle("DELETE /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleDeleteSession)))
 	mux.Handle("GET /v1/status", s.auth(http.HandlerFunc(s.handleStatus)))
+	mux.Handle("POST /v1/admin/config", s.auth(http.HandlerFunc(s.handleAdminConfig)))
 	mux.Handle("GET /v1/app/releases", s.auth(http.HandlerFunc(s.handleAppReleases)))
 	mux.Handle("GET /v1/app/assets/{id}", s.auth(http.HandlerFunc(s.handleAppAsset)))
 	mux.HandleFunc("GET /v1/app/releases/{tag}", s.handleReleasePage)

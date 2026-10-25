@@ -114,11 +114,38 @@ func (s *Sandbox) virtualPath(p string) (string, error) {
 		mapped = filepath.Join(s.workspace, p)
 	}
 	mapped = filepath.Clean(mapped)
-	rel, err := filepath.Rel(s.root, mapped)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err := s.assertWithin(mapped); err != nil {
 		return "", fmt.Errorf("path escapes the session workspace: %s", p)
 	}
+	// A symlink inside the workspace is allowed only if its TARGET is also
+	// inside the workspace. Without this check `ln -s /etc/passwd x` followed
+	// by file_read("x") would read the host file.
+	if resolved, err := filepath.EvalSymlinks(mapped); err == nil {
+		if err := s.assertWithin(resolved); err != nil {
+			return "", fmt.Errorf("path escapes the session workspace through a symlink: %s", p)
+		}
+		return resolved, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	// The target does not exist yet (write). Resolve the parent so a symlinked
+	// directory cannot redirect the write either.
+	parent := filepath.Dir(mapped)
+	if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+		if err := s.assertWithin(resolvedParent); err != nil {
+			return "", fmt.Errorf("path escapes the session workspace through a symlink: %s", p)
+		}
+		mapped = filepath.Join(resolvedParent, filepath.Base(mapped))
+	}
 	return mapped, nil
+}
+
+func (s *Sandbox) assertWithin(path string) error {
+	rel, err := filepath.Rel(s.root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("outside workspace")
+	}
+	return nil
 }
 
 func (s *Sandbox) rewriteCommand(cmd string) string {

@@ -39,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open store: %v", err)
 	}
-	server := NewServer(cfg, store)
+	server := NewServer(cfg, store, *configPath)
 	httpServer := &http.Server{
 		Addr:              *listen,
 		Handler:           server.Handler(),

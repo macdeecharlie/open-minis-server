@@ -114,8 +114,13 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Update.Token == "" && cfg.Update.TokenEnv != "" {
 		cfg.Update.Token = strings.TrimSpace(os.Getenv(cfg.Update.TokenEnv))
 	}
-	cfg.PublicURL = strings.TrimSuffix(cfg.PublicURL, "/")
+	return validateConfig(&cfg)
+}
 
+// validateConfig applies defaults and enforces the invariants shared by the
+// startup loader and the authenticated admin config endpoint.
+func validateConfig(cfg *Config) (*Config, error) {
+	cfg.PublicURL = strings.TrimSuffix(cfg.PublicURL, "/")
 	if strings.TrimSpace(cfg.AuthToken) == "" {
 		return nil, errors.New("auth_token is required (or set MINIS_AUTH_TOKEN)")
 	}
@@ -154,7 +159,7 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.DefaultModel != "" && !seen[cfg.DefaultModel] {
 		return nil, fmt.Errorf("default_model %q is not configured", cfg.DefaultModel)
 	}
-	return &cfg, nil
+	return cfg, nil
 }
 
 // ResolveModel returns the provider and model definition for a requested id.
