@@ -225,6 +225,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		}
 		parts := []*WirePart{}
 		var textBuilder strings.Builder
+		var thinkingBuf strings.Builder
 		textOpen := false
 		type pendingCall struct {
 			part      *WirePart
@@ -291,6 +292,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			case "text":
 				appendText(ev.Text)
 			case "thinking":
+				thinkingBuf.WriteString(ev.Text)
 				run.emit("thinking", map[string]any{"text": ev.Text})
 			case "tool_start":
 				ensureCall(ev.ID, ev.Name)
@@ -339,7 +341,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				clean = append(clean, *p)
 			}
 			if len(clean) > 0 {
-				run.emit("assistant_end", map[string]any{"parts": clean, "stop_reason": "error", "usage": usage})
+				run.emit("assistant_end", map[string]any{"parts": clean, "stop_reason": "error", "usage": usage, "reasoning_content": thinkingBuf.String()})
 				id := newID("asst")
 				_, _ = s.store.AppendMessage(StoredMessage{ID: id, SessionID: sessionID, Role: "assistant", Parts: clean, CreatedAt: nowMillis()})
 			}
@@ -396,15 +398,17 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			run.emit("error", map[string]any{"message": "the model returned an empty response"})
 			return
 		}
+		reasoning := thinkingBuf.String()
 		run.emit("assistant_end", map[string]any{
-			"parts":       finalParts,
-			"stop_reason": stop,
-			"usage":       usage,
+			"parts":             finalParts,
+			"stop_reason":       stop,
+			"usage":             usage,
+			"reasoning_content": reasoning,
 		})
 		assistantID := newID("asst")
 		if _, err := s.store.AppendMessage(StoredMessage{
 			ID: assistantID, SessionID: sessionID, Role: "assistant",
-			Parts: finalParts, Usage: &usage, CreatedAt: nowMillis(),
+			Parts: finalParts, ReasoningContent: reasoning, Usage: &usage, CreatedAt: nowMillis(),
 		}); err != nil {
 			log.Printf("store assistant message: %v", err)
 		}
@@ -474,7 +478,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			log.Printf("store tool result: %v", err)
 		}
 
-		assistantMsg := WireMessage{Role: "assistant", Parts: finalParts}
+		assistantMsg := WireMessage{Role: "assistant", Parts: finalParts, ReasoningContent: reasoning}
 		messages = append(messages, assistantMsg)
 		messages = append(messages, WireMessage{Role: "user", Parts: resultParts})
 	}

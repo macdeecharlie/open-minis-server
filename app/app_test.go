@@ -399,3 +399,37 @@ func TestBuildToolsIncludesClientTools(t *testing.T) {
 		t.Fatalf("server tool definition not preserved: %+v", byName)
 	}
 }
+
+func TestClientOwnedFilePaths(t *testing.T) {
+	cases := []struct {
+		name string
+		args string
+		want bool
+	}{
+		{"file_read", `{"path":"/var/minis/attachments/a.png"}`, true},
+		{"file_read", `{"path":"/var/minis/skills/x/SKILL.md"}`, true},
+		{"file_write", `{"path":"/var/minis/attachments/out.txt"}`, true},
+		{"file_edit", `{"path":"/var/minis/skills/x/SKILL.md"}`, true},
+		{"file_read", `{"path":"/var/minis/workspace/a.txt"}`, false},
+		{"file_read", `{"path":"/tmp/a.txt"}`, false},
+		{"shell_execute", `{"command":"cat /var/minis/attachments/a"}`, false},
+	}
+	for _, c := range cases {
+		if got := clientOwnedCall(c.name, []byte(c.args)); got != c.want {
+			t.Errorf("%s %s = %v, want %v", c.name, c.args, got, c.want)
+		}
+	}
+}
+
+func TestModelListDefaultFirst(t *testing.T) {
+	c := &Config{
+		DefaultModel: "b",
+		Providers: []Provider{
+			{ID: "p1", Kind: "mock", Models: []Model{{ID: "a"}, {ID: "b"}}},
+		},
+	}
+	list := c.ModelList()
+	if len(list) != 2 || list[0]["id"] != "b" || list[1]["id"] != "a" {
+		t.Fatalf("default not first: %+v", list)
+	}
+}
