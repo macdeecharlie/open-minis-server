@@ -70,8 +70,17 @@ cd /opt/open-minis-server/docker
 sudo docker compose up -d --build
 ```
 
-The compose example expects the existing external `internal` Docker network,
-which Caddy is already attached to. Add this to the Caddyfile:
+The compose example expects a dedicated external `minis_net` network shared
+with Caddy. It deliberately does **not** join the shared `internal` network:
+the agent's shell tools must not be able to reach unrelated containers. Create
+the network and attach Caddy once:
+
+```sh
+sudo docker network create minis_net
+sudo docker network connect minis_net caddy
+```
+
+If Caddy is recreated, reconnect it. Add this to the Caddyfile:
 
 ```caddy
 minis.gtoat.top {
