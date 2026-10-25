@@ -55,6 +55,10 @@ The test suite covers:
   `/var/minis/workspace/input.txt` by absolute path inside the script; the
   script printed the expected content. `pwd` is `/var/minis/workspace`, and
   `/workspace` exposes only the current session (other sessions are hidden).
+- A live mock run posted a `read_image` tool result with an image; the
+  `tool_result` event carried `image`, `image_mime` and `image_path`.
+- A live mock run executed `minis-sessions-cli list` in the sandbox
+  (`executor=server`) rather than routing it to the phone.
 - `mount` inside a command shows the per-session binds for workspace,
   attachments, offloads, browser and MCP config.
 - A second real run asked for `android-device info` and the server emitted
@@ -77,8 +81,8 @@ The test suite covers:
   (DN `CN=Android Debug`), versionCode 47, versionName 1.16.9.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
 - APK 1.16.7/build 45 and 1.16.8/build 46 have the same stable certificate and
-  matching digests. 1.16.10/build 48 (helper prompt fix) is the source release
-  in CI at this snapshot.
+  matching digests. 1.16.11/build 49 is the source release in CI at this
+  snapshot (image tool results, signatures, title/compaction parity).
 
 ## Not verified (environment limits)
 
