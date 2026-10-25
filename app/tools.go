@@ -31,6 +31,32 @@ func toolTitle(args map[string]any) string {
 	return ""
 }
 
+// clientOwnedCall keeps device-local files on the device. The model sees the
+// normal file tools, but paths under the Android app's attachment, skill,
+// offload and browser roots are executed by the paired client instead of the
+// server workspace. This is what makes images, skills and browser artifacts
+// remain readable in server mode without uploading every file.
+func clientOwnedCall(name string, args json.RawMessage) bool {
+	if name != "file_read" && name != "file_write" && name != "file_edit" {
+		return false
+	}
+	var a struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return false
+	}
+	for _, prefix := range []string{
+		"/var/minis/attachments", "/var/minis/skills",
+		"/var/minis/offloads", "/var/minis/browser",
+	} {
+		if a.Path == prefix || strings.HasPrefix(a.Path, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) buildTools(client []ToolDef) []ToolDef {
 	provided := map[string]ToolDef{}
 	for _, t := range client {

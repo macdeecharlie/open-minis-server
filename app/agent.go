@@ -266,9 +266,9 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			calls[id] = c
 			callOrder = append(callOrder, id)
 			hasTool = true
-			executor := "server"
-			if !serverToolNames[name] {
-				executor = "client"
+			executor := "client"
+			if serverToolNames[name] && !clientOwnedCall(name, json.RawMessage(`{}`)) {
+				executor = "server"
 			}
 			run.emit("tool_start", map[string]any{"id": id, "name": name, "executor": executor})
 			return c
@@ -305,9 +305,9 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				}
 				c.part.Args = json.RawMessage(args)
 				c.completed = true
-				executor := "server"
-				if !serverToolNames[c.part.Name] {
-					executor = "client"
+				executor := "client"
+				if serverToolNames[c.part.Name] && !clientOwnedCall(c.part.Name, c.part.Args) {
+					executor = "server"
 				}
 				var argObj any
 				_ = json.Unmarshal([]byte(args), &argObj)
@@ -416,7 +416,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			call := calls[id]
 			name := call.part.Name
 			args := call.part.Args
-			if serverToolNames[name] {
+			if serverToolNames[name] && !clientOwnedCall(name, args) {
 				run.emit("tool_running", map[string]any{"id": id, "name": name})
 				res := s.executeTool(run.ctx, sb, name, args, func(line string) {
 					run.emit("tool_output", map[string]any{"id": id, "line": line})
@@ -431,7 +431,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			// await event so a fast POST can never arrive before we listen.
 			ch := run.beginClientTool(id)
 			run.emit("await_client", map[string]any{"id": id, "name": name})
-			res, err := run.waitClientToolCh(run.ctx, ch, 15*time.Minute)
+			res, err := run.waitClientToolCh(run.ctx, ch, 65*time.Minute)
 			run.finishClientTool(id)
 			if err != nil {
 				if run.ctx.Err() != nil {
