@@ -203,22 +203,32 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	if maxTurns <= 0 {
 		maxTurns = defaultMaxTurns
 	}
-	if maxTurns > 30 {
-		maxTurns = 30
+	if maxTurns > 500 {
+		maxTurns = 500
 	}
 	maxTokens := req.MaxTokens
 
 	tools := s.buildTools(req.Tools)
-	system := strings.TrimSpace(req.System)
-	if system == "" {
-		system = "You are Minis, a capable AI assistant running on your user's personal OpenMinis server. Be direct, accurate and useful. Use tools when they are needed."
+	system := ""
+	switch {
+	case req.Prompt != nil:
+		// The client sends structured state; the server owns prompt wording.
+		system = buildSystemPrompt(req.Prompt, sb.Workspace())
+	case strings.TrimSpace(req.System) != "":
+		// Legacy clients still send a complete prompt. Keep it byte-for-byte
+		// and only add the deployment note so the model knows the execution
+		// environment changed.
+		system = strings.TrimSpace(req.System) + "\n\n<server-runtime>\n" +
+			"Shell and file tools run inside a dedicated full Linux distribution container (Debian), not PRoot/Alpine and not on the phone. " +
+			"The shell runs as root, so distro package management (apt-get/apt) is available; use it when a task needs system tools. " +
+			"The session workspace is " + sb.Workspace() + ". The client's virtual paths /var/minis/workspace and /var/minis/attachments are mapped into it automatically. " +
+			"Browser automation, device integrations, memory, skills and user questions are executed by the paired Android client when they appear as tool calls. " +
+			"Do not claim you are on the phone; work in the server's Linux container.\n</server-runtime>"
+	default:
+		// Headless runs (scheduled tasks) and bare API clients get the same
+		// server-owned prompt with no session-specific fragments.
+		system = buildSystemPrompt(nil, sb.Workspace())
 	}
-	system += "\n\n<server-runtime>\n" +
-		"Shell and file tools run inside a dedicated full Linux distribution container (Debian), not PRoot/Alpine and not on the phone. " +
-		"The shell runs as root, so distro package management (apt-get/apt) is available; use it when a task needs system tools. " +
-		"The session workspace is " + sb.Workspace() + ". The client's virtual paths /var/minis/workspace and /var/minis/attachments are mapped into it automatically. " +
-		"Browser automation, device integrations, memory, skills and user questions are executed by the paired Android client when they appear as tool calls. " +
-		"Do not claim you are on the phone; work in the server's Linux container.\n</server-runtime>"
 
 	// Store the user's new prompt exactly once. History is client-owned, so
 	// the server only needs this row for future Web UI session browsing.

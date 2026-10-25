@@ -735,3 +735,86 @@ func TestGeminiProviderParsesTextAndTools(t *testing.T) {
 		t.Fatalf("result=%+v", res)
 	}
 }
+
+func TestServerPromptAssembly(t *testing.T) {
+	on := true
+	prompt := buildSystemPrompt(&PromptContext{
+		Identity:          "You are Test, a capable AI assistant running on an Android device with a fully functional Linux sandbox (Alpine Linux via PRoot, aarch64). ",
+		MemoryEnabled:     &on,
+		BrowserEnabled:    true,
+		UserAskEnabled:    true,
+		DelegationEnabled: true,
+		Skills:            "Skills:\n<available_skills></available_skills>",
+		GlobalMemory:      "Global memory (GLOBAL.md):\nhello",
+		DailyMemory:       "Recent memories:\nworld",
+		Language:          "en-US",
+		Timezone:          "Asia/Kolkata",
+		ModelUseCount:     3,
+	}, "/workspace/sessions/s1/workspace")
+	for _, want := range []string{
+		"You are Test, a capable AI assistant running in a dedicated full Debian Linux container",
+		"Available tools:",
+		"- browser_use:",
+		"- user_ask:",
+		"Memory system (currently ENABLED):",
+		"Skills:\n<available_skills>",
+		"Global memory (GLOBAL.md):",
+		"Recent memories:",
+		"Runtime context:",
+		"- Current date: ",
+		"- Device language: en-US",
+		"- minis-model-use models available: 3",
+		"- Execution environment: dedicated Debian 12 container",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q", want)
+		}
+	}
+	for _, placeholder := range []string{"{{BROWSER_BULLET}}", "{{USER_ASK_LINE}}", "{{MINIS_URL_NOTE}}", "{{MEMORY_SYSTEM}}", "{{MODEL_USE_NOTE}}", "{{SCHEDULED_NOTE}}", "${toolListMemoryBullets}"} {
+		if strings.Contains(prompt, placeholder) {
+			t.Fatalf("prompt still contains %s", placeholder)
+		}
+	}
+	if strings.Contains(prompt, "PRoot, aarch64") {
+		t.Fatal("prompt still describes the old PRoot sandbox")
+	}
+	off := false
+	prompt = buildSystemPrompt(&PromptContext{MemoryEnabled: &off}, "/w")
+	if !strings.Contains(prompt, "Memory system (currently DISABLED)") {
+		t.Fatal("memory-off prompt missing disabled notice")
+	}
+	if strings.Contains(prompt, "memory_write:") {
+		t.Fatal("memory-off prompt advertises memory tools")
+	}
+}
+
+func TestDeviceCLIRouting(t *testing.T) {
+	cases := map[string]bool{
+		"android-calendar list --max 5":                          true,
+		"cd /var/minis/workspace && android-photos stats":        true,
+		"echo hi; android-device battery":                        true,
+		"/usr/local/bin/android-open https://example.com":        true,
+		"ANDROID_X=1 sudo timeout 10 android-location current":   true,
+		"minis-sessions-cli search --keywords budget":            true,
+		"echo 'android-calendar is a CLI'":                       false,
+		"python3 script.py --name android-calendar":              false,
+		"rg -n 'android-clipboard' /var/minis/workspace":         false,
+		"cat /var/minis/workspace/report.md | rg android-device": false,
+	}
+	for command, want := range cases {
+		if got := usesDeviceCLI(command); got != want {
+			t.Fatalf("usesDeviceCLI(%q) = %v, want %v", command, got, want)
+		}
+	}
+	if !clientOwnedCall("shell_execute", json.RawMessage(`{"command":"android-contacts list"}`)) {
+		t.Fatal("device CLI shell call was not routed to the client")
+	}
+	if clientOwnedCall("shell_execute", json.RawMessage(`{"command":"uname -a"}`)) {
+		t.Fatal("server shell call was routed to the client")
+	}
+	for _, path := range []string{"/var/minis/memory/GLOBAL.md", "/var/minis/shared/a.txt", "/var/minis/mcp-servers/servers.json", "/var/minis/mounts/x/y"} {
+		if !clientOwnedCall("file_read", json.RawMessage(`{"path":"`+path+`"}`)) {
+			t.Fatalf("device path %s was not routed to the client", path)
+		}
+	}
+}

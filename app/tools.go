@@ -36,7 +36,45 @@ func toolTitle(args map[string]any) string {
 // offload and browser roots are executed by the paired client instead of the
 // server workspace. This is what makes images, skills and browser artifacts
 // remain readable in server mode without uploading every file.
+// deviceCLIs are the shell commands that only exist on the Android device.
+// Their implementations (native_offload handlers, Minis app services) cannot
+// run in the server's Debian container, so a shell call that uses one is sent
+// to the paired app instead. The official app runs these in its PRoot shell;
+// routing the whole command preserves that behavior and its output format.
+var deviceCLIs = map[string]bool{
+	"android-a11y-cli":     true,
+	"android-alarm":        true,
+	"android-calendar":     true,
+	"android-clipboard":    true,
+	"android-contacts":     true,
+	"android-device":       true,
+	"android-location":     true,
+	"android-notification": true,
+	"android-open":         true,
+	"android-photos":       true,
+	"android-player":       true,
+	"android-shizuku-cli":  true,
+	"android-speak":        true,
+	"android-speech":       true,
+	"android-weather":      true,
+	"minis-config":         true,
+	"minis-mcp-cli":        true,
+	"minis-model-use":      true,
+	"minis-open":           true,
+	"minis-scheduled":      true,
+	"minis-sessions-cli":   true,
+}
+
 func clientOwnedCall(name string, args json.RawMessage) bool {
+	if name == "shell_execute" {
+		var a struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return false
+		}
+		return usesDeviceCLI(a.Command)
+	}
 	if name != "file_read" && name != "file_write" && name != "file_edit" {
 		return false
 	}
@@ -49,6 +87,8 @@ func clientOwnedCall(name string, args json.RawMessage) bool {
 	for _, prefix := range []string{
 		"/var/minis/attachments", "/var/minis/skills",
 		"/var/minis/offloads", "/var/minis/browser",
+		"/var/minis/memory", "/var/minis/shared",
+		"/var/minis/mcp-servers", "/var/minis/mounts",
 	} {
 		if a.Path == prefix || strings.HasPrefix(a.Path, prefix+"/") {
 			return true
@@ -499,4 +539,148 @@ func (s *Server) search(ctx context.Context, query string, limit int) (string, e
 		return "No results.", nil
 	}
 	return b.String(), nil
+}
+
+// usesDeviceCLI reports whether any command segment invokes a CLI that only
+// exists on the Android device. It is intentionally lexical: quote-aware
+// splitting plus wrapper stripping, no shell expansion.
+func usesDeviceCLI(command string) bool {
+	for _, segment := range splitShellSegments(command) {
+		words := shellWords(segment)
+		words = stripShellWrappers(words)
+		if len(words) == 0 {
+			continue
+		}
+		base := words[0]
+		if i := strings.LastIndexByte(base, '/'); i >= 0 {
+			base = base[i+1:]
+		}
+		if deviceCLIs[base] {
+			return true
+		}
+	}
+	return false
+}
+
+func splitShellSegments(command string) []string {
+	var out []string
+	var b strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if s := strings.TrimSpace(b.String()); s != "" {
+			out = append(out, s)
+		}
+		b.Reset()
+	}
+	rs := []rune(command)
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if quote != 0 {
+			b.WriteRune(r)
+			if r == '\\' && quote == '"' {
+				escaped = true
+			} else if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch r {
+		case '\'', '"':
+			quote = r
+			b.WriteRune(r)
+		case '\\':
+			escaped = true
+			b.WriteRune(r)
+		case ';', '|', '&', '\n', '(', ')':
+			flush()
+		case '#':
+			// A comment runs to the end of the line.
+			for i < len(rs) && rs[i] != '\n' {
+				i++
+			}
+			flush()
+		default:
+			b.WriteRune(r)
+		}
+	}
+	flush()
+	return out
+}
+
+func shellWords(segment string) []string {
+	var out []string
+	var b strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if b.Len() > 0 {
+			out = append(out, b.String())
+			b.Reset()
+		}
+	}
+	for _, r := range segment {
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if quote != 0 {
+			if r == '\\' && quote == '"' {
+				escaped = true
+				continue
+			}
+			if r == quote {
+				quote = 0
+				continue
+			}
+			b.WriteRune(r)
+			continue
+		}
+		switch r {
+		case '\'', '"':
+			quote = r
+		case '\\':
+			escaped = true
+		case ' ', '\t':
+			flush()
+		default:
+			b.WriteRune(r)
+		}
+	}
+	flush()
+	return out
+}
+
+func stripShellWrappers(words []string) []string {
+	for len(words) > 0 {
+		w := words[0]
+		if isEnvAssignment(w) {
+			words = words[1:]
+			continue
+		}
+		switch w {
+		case "sudo", "env", "command", "exec", "nohup", "nice", "stdbuf":
+			words = words[1:]
+			continue
+		case "timeout":
+			words = words[1:]
+			if len(words) > 0 && !strings.HasPrefix(words[0], "-") {
+				words = words[1:]
+			}
+			continue
+		}
+		return words
+	}
+	return words
+}
+
+func isEnvAssignment(w string) bool {
+	i := strings.IndexByte(w, '=')
+	return i > 0 && !strings.ContainsAny(w[:i], "/$`()[]{}")
 }

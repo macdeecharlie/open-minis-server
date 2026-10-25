@@ -60,7 +60,7 @@ const (
 	defaultDataDir     = "/data"
 	defaultListen      = ":8080"
 	defaultMaxOutput   = 200 * 1024
-	defaultMaxTurns    = 12
+	defaultMaxTurns    = 500
 	defaultUpdateCache = 60
 )
 

@@ -50,18 +50,19 @@ type ToolFunction struct {
 // every request so an edit, truncation or compaction on the client can never
 // leave the server with a divergent transcript.
 type RunRequest struct {
-	RunID            string        `json:"run_id"`
-	SessionID        string        `json:"session_id"`
-	Model            string        `json:"model"`
-	System           string        `json:"system"`
-	Messages         []WireMessage `json:"messages"`
-	Tools            []ToolDef     `json:"tools"`
-	MaxTurns         int           `json:"max_turns"`
-	MaxTokens        int           `json:"max_tokens"`
-	Thinking         string        `json:"thinking"`
-	Fallbacks        []string      `json:"fallbacks,omitempty"`
-	FallbackStrategy string        `json:"fallback_strategy,omitempty"`
-	UserMessageID    string        `json:"user_message_id"`
+	RunID            string         `json:"run_id"`
+	SessionID        string         `json:"session_id"`
+	Model            string         `json:"model"`
+	System           string         `json:"system"`
+	Messages         []WireMessage  `json:"messages"`
+	Tools            []ToolDef      `json:"tools"`
+	MaxTurns         int            `json:"max_turns"`
+	MaxTokens        int            `json:"max_tokens"`
+	Thinking         string         `json:"thinking"`
+	Prompt           *PromptContext `json:"prompt_context,omitempty"`
+	Fallbacks        []string       `json:"fallbacks,omitempty"`
+	FallbackStrategy string         `json:"fallback_strategy,omitempty"`
+	UserMessageID    string         `json:"user_message_id"`
 }
 
 type Usage struct {
