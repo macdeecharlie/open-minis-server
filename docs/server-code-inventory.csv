@@ -1,0 +1,57 @@
+path,lines,role
+app/admin.go,183,admin config endpoints
+app/agent.go,844,"agent loop, retries, fallback, tools, replay/steer"
+app/api_cli.go,595,minis-* CLI API
+app/api_files.go,146,file API
+app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
+app/api_scheduled.go,53,scheduled task API
+app/api_terminal.go,83,terminal API proxy
+app/app_test.go,1720,test suite
+app/cli.go,666,minis-* CLI implementations
+app/config.go,295,configuration and validation
+app/context.go,517,"context estimator, compaction, offload, image budget, tool repair"
+app/main.go,88,entrypoint and role dispatch
+app/prompt.go,170,server-owned prompt assembly
+app/prompt_base.txt,90,prompt asset
+app/prompt_browser.txt,2,prompt asset
+app/prompt_memory_off.txt,6,prompt asset
+app/prompt_memory_on.txt,11,prompt asset
+app/prompt_url_browser.txt,1,prompt asset
+app/prompt_url_plain.txt,1,prompt asset
+app/provider.go,256,"provider HTTP, SSE, idle watchdog, error classification"
+app/provider_anthropic.go,344,"Anthropic wire, thinking, prompt cache"
+app/provider_gemini.go,227,"Gemini wire, thought signatures, audio"
+app/provider_mock.go,129,offline test provider
+app/provider_openai.go,371,OpenAI-compatible wire
+app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
+app/sandbox_agent.go,506,sandbox container API
+app/sandbox_remote.go,299,server to sandbox client
+app/sandbox_terminal.go,292,PTY terminal
+app/scheduled.go,474,server scheduler and headless runner
+app/server.go,479,"HTTP routes, SSE, sessions, files, terminal proxy, config"
+app/store.go,349,append-only session store
+app/tools.go,742,"tool schemas, routing, execution, minis URLs"
+app/types.go,140,wire/config/session types
+app/update.go,229,private release proxy
+docker/Caddyfile.snippet,4,sandbox image / deployment
+docker/Dockerfile,38,sandbox image / deployment
+docker/docker-compose.yml,91,sandbox image / deployment
+docker/egress-firewall.sh,30,sandbox image / deployment
+docker/entrypoint.sh,91,sandbox image / deployment
+docker/minis-egress-firewall.service,14,sandbox image / deployment
+docker/sandbox/Dockerfile,67,sandbox image / deployment
+docker/sandbox/mcp-cli/bin/minis-mcp-cli,41,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/daemon.py,740,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/main.py,679,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/transport/__init__.py,0,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/transport/http.py,462,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/transport/stdio.py,159,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/utils/__init__.py,0,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/utils/config.py,196,sandbox image / deployment
+docker/sandbox/mcp-cli/lib/utils/deps.py,70,sandbox image / deployment
+docker/sandbox/minis-session-exec,27,sandbox image / deployment
+scripts/android_inventory.py,330,inventory tooling
+docs/agent-protocol.md,175,documentation
+docs/architecture.md,122,documentation
+docs/parity-matrix.md,169,documentation
+docs/verification.md,76,documentation
