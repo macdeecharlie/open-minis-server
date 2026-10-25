@@ -284,7 +284,14 @@ func (s *Scheduler) runTask(ctx context.Context, t *ScheduledTask, manual bool) 
 func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, string, error) {
 	sid := t.SessionID
 	if t.Target == "" || t.Target == "new" || sid == "" {
-		sid = fmt.Sprintf("sched_%s_%d", strings.ReplaceAll(t.ID, "-", "")[:8], time.Now().Unix())
+		prefix := strings.ReplaceAll(t.ID, "-", "")
+		if len(prefix) > 8 {
+			prefix = prefix[:8]
+		}
+		if prefix == "" {
+			prefix = "task"
+		}
+		sid = fmt.Sprintf("sched_%s_%d", prefix, time.Now().Unix())
 	}
 	if _, err := s.store.EnsureSession(sid, t.Model); err != nil {
 		return sid, "", err
