@@ -30,7 +30,7 @@ resources, generated schemas, and the bundled runtime assets.
 | `server/` | server bridge | implemented | SSE run protocol, tool result bridge, bootstrap, updater feed. |
 | `sandbox/` main + `assets/proot*` | server container | implemented / replaced | Agent shell and file tools execute in the dedicated **Debian 12** container. A server file-browsing API (`/v1/files/list|raw|upload`) is live. PRoot remains only for device-local file/skill bridges and local fallback. |
 | `sandbox/offload/*` | mixed | partial | `minis-model-use`, `minis-sessions-cli`, `minis-scheduled`, `minis-config` need server-side equivalents; `android-*` CLIs stay on the phone. |
-| `provider/` | server | partial | OpenAI-compatible + Anthropic streams exist server-side. Native Gemini, OAuth custody, model catalogs, thinking rules, image budget parity, and all provider-specific edge cases are pending. |
+| `provider/` | server | partial | OpenAI-compatible + Anthropic streams, same-model retries and model fallbacks exist server-side. Native Gemini, OAuth custody, model catalogs, thinking rules, image budget parity, and provider-specific edge cases are pending. |
 | `agent/` | server | partial | Basic tool loop and client bridge exist. Subagent orchestration, loop detection, SOUL/prompt builder, user-ask recovery, helper budgets and plan/steer are still in the app. |
 | `scheduled/` | server + device trigger | partial | The server now has persistent interval/calendar/once tasks, run history and a headless runner; app-side task sync and completion notifications are still pending. |
 | `data/` context/prompt/memory/skills | server + device | partial | Prompt and skills/memory fragments are still built and sent by the app. Server-side memory/skills storage and compaction are pending. |
@@ -65,9 +65,10 @@ resources, generated schemas, and the bundled runtime assets.
 2. **Provider parity.** Native Gemini, OAuth custody/refresh, model groups and
    fallback, per-model thinking rules, image budget, provider-specific retries
    and error classification, quotas.
-3. **Agent-loop parity.** Auto-retry, fallback chain, empty-turn recovery,
-   tool-loop detector, steering/queued prompts, subagent execution and
-   completion, user-ask recovery, interrupted-tail repair.
+3. **Agent-loop parity.** Same-model retries and model fallbacks are live.
+   Still pending: empty-turn recovery, tool-loop detector, steering/queued
+   prompts, subagent execution/completion, user-ask recovery, interrupted-tail
+   repair.
 4. **Scheduled tasks on the server.** Persistence, interval/calendar/once,
    targets, headless execution and run history are live. Still pending:
    app-side task sync, prefills/completion triggers, and completion
@@ -94,6 +95,8 @@ resources, generated schemas, and the bundled runtime assets.
   list, upload, raw download, and persisted workspace.
 - Server PTY terminal verified through Caddy and the server proxy: Debian bash
   prompt, command echo and real command output.
+- Same-model retry and model fallback verified with a failing upstream and a
+  configured fallback.
 - Server-side shell/file tools execute in that container via an authenticated
   private API.
 - Real OpenRouter model run with server shell tool returned Debian
