@@ -1,6 +1,7 @@
 [Unit]
 Description=OpenMinis agent egress isolation (DOCKER-USER)
 After=docker.service
+PartOf=docker.service
 Requires=docker.service
 
 [Service]
