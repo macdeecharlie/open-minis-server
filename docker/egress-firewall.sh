@@ -13,4 +13,7 @@ rule -s 172.19.0.0/16 -d 10.0.0.0/8 -m conntrack --ctstate NEW -j DROP
 rule -s 172.19.0.0/16 -d 172.17.0.0/16 -m conntrack --ctstate NEW -j DROP
 rule -s 172.19.0.0/16 -d 172.18.0.0/16 -m conntrack --ctstate NEW -j DROP
 rule -s 172.19.0.0/16 -d 172.20.0.0/16 -m conntrack --ctstate NEW -j DROP
+# The forwarder is the only same-network destination on :8080. The Docker
+# gateway's :8080 is Traefik on the host and must stay unreachable.
+rule -s 172.19.0.0/16 -d 172.19.0.1 -p tcp --dport 8080 -m conntrack --ctstate NEW -j DROP
 rule -s 172.19.0.0/16 -d 172.19.0.0/16 -p tcp ! --dport 8080 -m conntrack --ctstate NEW -j DROP
