@@ -10,6 +10,7 @@ cd app
 gofmt -l .                      # empty
 go vet ./...                    # clean
 go test -count=1 ./...          # passes, repeated runs (no flakes)
+go test -race -count=1 ./...    # clean after waiting for the SSE subscriber
 go build -o /tmp/minis-server .
 ```
 
@@ -65,7 +66,8 @@ The test suite covers:
   `ab5b668386da52fdc4476a9eb86a68a10daeacecb8453301ed73c25188d706ee`
   (DN `CN=Android Debug`), versionCode 44, versionName 1.16.6.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
-- APK 1.16.7/build 45 has the same stable certificate and a matching digest.
+- APK 1.16.7/build 45 and 1.16.8/build 46 have the same stable certificate and
+  matching digests. 1.16.9/build 47 is the source release after them.
 
 ## Not verified (environment limits)
 
