@@ -258,6 +258,26 @@ func (s *Store) GetSession(id string) (*SessionMeta, error) {
 	return &cp, nil
 }
 
+// UpdateSessionTitle changes a session's displayed title without touching its
+// transcript, matching minis-sessions-cli update --title.
+func (s *Store) UpdateSessionTitle(id, title string) error {
+	if !sessionIDPattern.MatchString(id) {
+		return errors.New("invalid session id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.meta[id]
+	if m == nil {
+		return os.ErrNotExist
+	}
+	m.Title = title
+	m.UpdatedAt = nowMillis()
+	if err := s.writeMeta(m); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Store) DeleteSession(id string) error {
 	if !sessionIDPattern.MatchString(id) {
 		return errors.New("invalid session id")

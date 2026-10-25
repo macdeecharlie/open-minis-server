@@ -938,3 +938,124 @@ func TestToolResultOffload(t *testing.T) {
 		t.Fatalf("offloaded content = %d bytes", len(content))
 	}
 }
+
+func TestCLIEndpoints(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	cfg.Sandbox.AgentToken = "sandbox-token"
+	store, err := NewStore(cfg.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	call := func(method, path string, body any, out any) error {
+		var rdr io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rdr = bytes.NewReader(b)
+		}
+		req, _ := http.NewRequest(method, ts.URL+path, rdr)
+		req.Header.Set("Authorization", "Bearer sandbox-token")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		}
+		if out != nil {
+			return json.Unmarshal(raw, out)
+		}
+		return nil
+	}
+
+	// Application token must not work on the CLI surface.
+	bad, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/cli/models", nil)
+	bad.Header.Set("Authorization", "Bearer test-token")
+	badResp, err := http.DefaultClient.Do(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badResp.Body.Close()
+	if badResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("app token on CLI route = HTTP %d, want 401", badResp.StatusCode)
+	}
+
+	// A stored session is visible through sessions list/messages/update.
+	if _, err := store.AppendMessage(StoredMessage{
+		ID: "m1", SessionID: "sess-cli", Role: "user",
+		Parts: []WirePart{{Type: "text", Text: "budget report for October"}}, CreatedAt: nowMillis(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sessions struct {
+		Sessions []map[string]any `json:"sessions"`
+	}
+	if err := call("GET", "/v1/cli/sessions?q=budget", nil, &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions.Sessions) != 1 || sessions.Sessions[0]["session_id"] != "sess-cli" {
+		t.Fatalf("sessions = %+v", sessions.Sessions)
+	}
+	var messages struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := call("GET", "/v1/cli/sessions/sess-cli/messages?tools=1", nil, &messages); err != nil {
+		t.Fatal(err)
+	}
+	if len(messages.Messages) != 1 || !strings.Contains(fmt.Sprint(messages.Messages[0]), "October") {
+		t.Fatalf("messages = %+v", messages.Messages)
+	}
+	if err := call("POST", "/v1/cli/sessions/sess-cli/update", map[string]any{"title": "Budget"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.GetSession("sess-cli")
+	if err != nil || meta.Title != "Budget" {
+		t.Fatalf("session title = %+v err=%v", meta, err)
+	}
+
+	// Model use goes through the configured provider.
+	var used struct {
+		Text  string `json:"text"`
+		Model string `json:"model"`
+	}
+	if err := call("POST", "/v1/cli/model-use", map[string]any{
+		"model": "mock-1", "messages": []map[string]any{{"role": "user", "content": "hello"}},
+	}, &used); err != nil {
+		t.Fatal(err)
+	}
+	if used.Model != "mock-1" || !strings.Contains(used.Text, "OpenMinis server is connected") {
+		t.Fatalf("model use = %+v", used)
+	}
+
+	// Scheduled create/list through the CLI surface.
+	var task map[string]any
+	if err := call("POST", "/v1/cli/scheduled", map[string]any{
+		"label": "cli task", "prompt": "run [[shell:echo cli-ok]]", "target": "new",
+		"enabled": true, "kind": "interval", "interval_sec": 60,
+	}, &task); err != nil {
+		t.Fatal(err)
+	}
+	if task["id"] == nil || task["id"] == "" {
+		t.Fatalf("task = %+v", task)
+	}
+	var list struct {
+		Tasks []map[string]any `json:"tasks"`
+	}
+	if err := call("GET", "/v1/cli/scheduled", nil, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Tasks) != 1 {
+		t.Fatalf("tasks = %d", len(list.Tasks))
+	}
+	if err := call("DELETE", "/v1/cli/scheduled/"+task["id"].(string), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+}

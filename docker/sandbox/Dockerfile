@@ -48,6 +48,11 @@ RUN apt-get update \
     && mkdir -p /workspace/sessions /root
 
 COPY --from=build /out/minis-server /usr/local/bin/minis-server
+# Agent-facing CLI names, dispatched by argv[0] in main(). They replace the
+# PRoot native_offload handlers with server-backed tools.
+RUN for name in minis-sessions-cli minis-config minis-model-use minis-scheduled; do \
+        ln -sf /usr/local/bin/minis-server "/usr/local/bin/$name"; \
+    done
 
 WORKDIR /workspace
 EXPOSE 8090

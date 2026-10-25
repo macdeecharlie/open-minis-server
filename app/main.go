@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -22,6 +23,10 @@ func envOr(key, def string) string {
 }
 
 func main() {
+	if program := filepath.Base(os.Args[0]); program != "minis-server" && program != "open-minis-server" &&
+		strings.HasPrefix(program, "minis-") {
+		os.Exit(runCLI(program, os.Args[1:]))
+	}
 	role := flag.String("role", envOr("MINIS_ROLE", "server"), "server or sandbox")
 	configPath := flag.String("config", envOr("MINIS_CONFIG", "/data/config.json"), "path to config.json")
 	listen := flag.String("listen", envOr("MINIS_LISTEN", defaultListen), "listen address")
