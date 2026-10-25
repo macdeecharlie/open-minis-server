@@ -166,7 +166,7 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 		argv = argv[1:]
 	}
 	fs, out := newFlagSet("minis-sessions-cli")
-	limit := fs.Int("limit", 20, "maximum sessions")
+	limit := fs.Int("limit", 0, "maximum rows")
 	id := fs.String("id", "", "session id")
 	keywords := fs.String("keywords", "", "keywords")
 	start := fs.String("start", "", "start date YYYY-MM-DD")
@@ -174,7 +174,7 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 	group := fs.String("group", "", "group name")
 	tools := fs.Bool("tools", false, "include tool calls and outputs")
 	offset := fs.Int("offset", 0, "message offset")
-	msgLimit := fs.Int("limit", 0, "message limit")
+
 	title := fs.String("title", "", "new title")
 	maxItems := fs.Int("max", 0, "maximum sessions")
 	full := fs.Bool("full", false, "include full rows")
@@ -188,9 +188,11 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 	case "list":
 		_, _, _, _ = *full, *titleAuto, *category, *icon
 		q := url.Values{}
-		if *limit > 0 {
-			q.Set("limit", strconv.Itoa(*limit))
+		effective := *limit
+		if effective <= 0 {
+			effective = 20
 		}
+		q.Set("limit", strconv.Itoa(effective))
 		if *id != "" {
 			q.Set("id", *id)
 		}
@@ -241,8 +243,8 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 		if *offset > 0 {
 			q.Set("offset", strconv.Itoa(*offset))
 		}
-		if *msgLimit > 0 {
-			q.Set("limit", strconv.Itoa(*msgLimit))
+		if *limit > 0 {
+			q.Set("limit", strconv.Itoa(*limit))
 		}
 		var res map[string]any
 		if err := c.do("GET", "/v1/cli/sessions/"+url.PathEscape(*id)+"/messages?"+q.Encode(), nil, &res); err != nil {

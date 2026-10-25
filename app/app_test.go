@@ -1710,3 +1710,11 @@ func TestMinisURL(t *testing.T) {
 		t.Fatal("non-virtual path produced a minis URL")
 	}
 }
+
+func TestCLIBinariesStart(t *testing.T) {
+	for _, name := range []string{"minis-sessions-cli", "minis-config", "minis-model-use", "minis-scheduled"} {
+		if code := runCLI(name, []string{"--help"}); code != 0 {
+			t.Fatalf("%s --help exit %d", name, code)
+		}
+	}
+}
