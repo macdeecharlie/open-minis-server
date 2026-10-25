@@ -437,6 +437,18 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			messages = append(messages, steers...)
 			messages = repairToolPairing(messages)
 		}
+		helper := req.Prompt != nil && req.Prompt.Helper
+		turnTools := tools
+		if helper && turn == maxTurns-2 {
+			messages = append(messages, WireMessage{Role: "user", Parts: []WirePart{{Type: "text", Text: "[Budget check: 1 tool round left before tools are withdrawn.] Stop investigating now and spend what is left on finishing: if the task asked you to write a file or produce an artifact, do it in the next round, then write your final answer. The final message must contain the complete deliverable itself, not a pointer to it."}}})
+		}
+		if helper && turn >= maxTurns-1 {
+			// The official helper loop withdraws tools on its last round and
+			// asks for the deliverable. Do the same so a child can never end a
+			// run with only tool calls and no result for the parent.
+			turnTools = nil
+			messages = append(messages, WireMessage{Role: "user", Parts: []WirePart{{Type: "text", Text: "[Tools are no longer available for this turn.] Write your final answer NOW from what you already have. It must contain the complete deliverable itself — the full report, document, list or answer the task asked for — not a description of what you did, not a pointer to a file, not a request for more time. Mark anything you could not verify as unverified. This message is returned to the parent agent verbatim."}}})
+		}
 		if estimated := estimatedRequestTokens(system, messages, tools); estimated >= 100_000 &&
 			(personaReminderAt == 0 || estimated >= personaReminderAt+100_000) &&
 			!historyHasPersonaReminder(messages) {
@@ -522,7 +534,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 					Model:     attempt.model,
 					System:    system,
 					Messages:  messages,
-					Tools:     tools,
+					Tools:     turnTools,
 					MaxTokens: maxTokens,
 					Thinking:  req.Thinking,
 				}, func(ev ProviderEvent) error {
