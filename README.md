@@ -4,16 +4,18 @@ The backend for OpenMinis. The Android app is the GUI; this server owns the
 agent loop, model credentials, provider streaming, shell/file tools, sessions
 and the app update channel.
 
-- **Go, standard library only** — one static binary, no database driver, no
-  framework, no background daemons.
+- **Go, one vendored dependency** — `creack/pty` for the real terminal. No
+  database driver, no framework, no background daemons.
 - **SSE streaming** — one long-lived HTTP response per agent run, no polling.
 - **Session store** — append-only JSONL per session under `/data/sessions`.
   Startup is an in-memory index build; the server does not hold chat history in
   memory after a request finishes.
-- **Server-side sandbox** — shell and file tools run in a per-session workspace
-  as an unprivileged user, with path confinement, output caps and command
-  timeouts. Device-bound tools (browser, memory, user questions, sub-agents)
-  are bridged back to the Android client over the same run.
+- **Dedicated full-Linux sandbox** — shell and file tools run as root inside a
+  separate Debian 12 container, with per-session workspaces, path confinement,
+  output caps and command timeouts. Device-bound tools (browser, sensors,
+  notifications, `android-*` CLIs) are bridged back to the Android client over
+  the same run; `minis-sessions-cli`, `minis-config` and `minis-model-use` run
+  in the sandbox against server APIs.
 - **Caddy-ready** — plain HTTP on `:8080`; TLS and the public hostname belong to
   the existing Caddy container.
 
@@ -147,8 +149,15 @@ at startup rather than starting with a silent fallback.
 | `POST` | `/v1/files/list` | List a session workspace directory. |
 | `GET` | `/v1/files/raw` | Raw file bytes for preview/download. |
 | `POST` | `/v1/files/upload` | Upload bytes into a session workspace. |
+| `POST` | `/v1/files/delete` | Delete a workspace file or directory. |
+| `POST` | `/v1/files/rename` | Rename or move a workspace entry. |
+| `POST` | `/v1/files/mkdir` | Create a workspace directory. |
 | `POST` | `/v1/terminal` | Open a PTY in the Debian sandbox (SSE). |
 | `POST` | `/v1/terminal/{id}/input` | Send terminal input bytes. |
+| `POST` | `/v1/terminal/{id}/resize` | Resize the PTY. |
+| `POST` | `/v1/terminal/{id}/close` | Close the terminal. |
+| `POST` | `/v1/sessions/{id}/meta` | Update a server session title. |
+| `GET/POST` | `/v1/cli/*` | Sandbox-token API used by the `minis-*` CLI tools. |
 | `DELETE` | `/v1/sessions/{id}` | Delete a session. |
 | `GET` | `/v1/app/releases` | Private GitHub release proxy for the in-app updater. |
 | `GET` | `/v1/app/assets/{id}` | Authenticated APK download proxy. |
@@ -181,9 +190,13 @@ curl -X POST https://minis.example.com/v1/admin/update-token \
 
 - The server is single-token by design; use a long random token and keep it in
   the app build's private properties file.
-- Shell commands run inside the container as `minis`, not root. Workspaces are
-  isolated per session, but sessions share that Unix user; this is a personal
-  server, not a multi-tenant service.
+- Shell commands run as **root inside the dedicated sandbox container**, not on
+  the VPS. Workspaces are isolated per session, but sessions share that root
+  user and filesystem; this is a personal server, not a multi-tenant service.
+  The sandbox holds no model, update or app tokens; the server holds those.
+- The sandbox can reach the server on `:8080` for the `minis-*` CLI tools. That
+  token is already readable by the sandbox root shell and only opens the
+  `/v1/cli/*` and sandbox tool APIs, not the app's `/v1/agent` surface.
 - `web_fetch` refuses loopback, private, link-local and unspecified addresses,
   and re-checks every redirect.
 - The agent container is isolated from the VPS's other Docker networks and
