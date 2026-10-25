@@ -20,7 +20,7 @@ resources, generated schemas, and the bundled runtime assets.
 | `device-only` | Inherently requires the phone (sensors, WebView, notifications, OAuth consent, APK install). |
 | `ui-only` | Presentation; remains in the APK. |
 | `replaced-by-server-container` | Legacy on-device sandbox code/assets kept for reference/fallback; the agent now uses the Debian container. |
-| `pending-remote-pty` | Terminal transport still local; needs a server PTY stream. |
+| `pending-remote-pty` | Superseded for server mode: the terminal now uses the Debian sandbox PTY. Local PTY remains the offline fallback. |
 | `unclassified` | Must be zero. Currently zero. |
 
 ## Ownership roll-up
@@ -71,10 +71,11 @@ resources, generated schemas, and the bundled runtime assets.
 4. **Scheduled tasks on the server.** Task persistence, interval/daily/custom
    scheduling, target sessions, prefills, completion triggers, run history,
    and app sync/notification delivery.
-5. **Remote GUI surfaces.** File browser/preview and `@file` mentions still
-   use local PRoot paths even though the server filesystem API exists. Add the
-   remote file browser/preview adapter and a remote PTY for the terminal.
-   Chat tool cards already show server output.
+5. **Remote GUI surfaces.** File browser/preview and the interactive terminal
+   now use the server: the file browser mirrors the session workspace into the
+   existing File-backed UI, and the terminal uses a real PTY in the Debian
+   sandbox. `@file` mentions and attachment uploads still need the server
+   adapter; chat tool cards already show server output.
 6. **Skills, memory and MCP data.** Server-side skill/memory stores and
    on-demand MCP tooling; attachments and device-local files must be uploaded
    or bridged deliberately.
@@ -90,6 +91,8 @@ resources, generated schemas, and the bundled runtime assets.
   and common build tools; isolated from host/other Docker networks.
 - Server file API verified end-to-end through the sandbox container:
   list, upload, raw download, and persisted workspace.
+- Server PTY terminal verified through Caddy and the server proxy: Debian bash
+  prompt, command echo and real command output.
 - Server-side shell/file tools execute in that container via an authenticated
   private API.
 - Real OpenRouter model run with server shell tool returned Debian
