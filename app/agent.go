@@ -246,6 +246,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	})
 
 	startingAttempt := 0
+	emptyNudges := 0
 	for turn := 0; turn < maxTurns; turn++ {
 		if run.ctx.Err() != nil {
 			return
@@ -464,7 +465,18 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			stop = "end_turn"
 		}
 		if len(finalParts) == 0 {
-			run.emit("error", map[string]any{"message": "the model returned an empty response"})
+			// The official loop nudges an empty turn once instead of ending
+			// the run with a blank bubble. Retry with a user-side reminder and
+			// no tools forced; the second empty turn is a real failure.
+			if emptyNudges < 1 {
+				emptyNudges++
+				messages = append(messages, WireMessage{
+					Role:  "user",
+					Parts: []WirePart{{Type: "text", Text: "<system-reminder>The previous response was empty. Continue the task or give the user a concise answer; do not return an empty response.</system-reminder>"}},
+				})
+				continue
+			}
+			run.emit("error", map[string]any{"message": "the model returned an empty response twice"})
 			return
 		}
 		reasoning := thinkingBuf.String()
