@@ -114,7 +114,7 @@ app/src/main/java/com/openminis/app/agent/ToolLoopDetector.kt,android,kotlin,517
 app/src/main/java/com/openminis/app/agent/jobs/AgentCallback.kt,android,kotlin,201,9526,server,partial,package
 app/src/main/java/com/openminis/app/agent/jobs/AgentJobRegistry.kt,android,kotlin,887,42981,server,partial,package
 app/src/main/java/com/openminis/app/agent/jobs/AgentSettings.kt,android,kotlin,33,1355,server,partial,package
-app/src/main/java/com/openminis/app/agent/jobs/HelperRunner.kt,android,kotlin,975,51943,server,partial,package
+app/src/main/java/com/openminis/app/agent/jobs/HelperRunner.kt,android,kotlin,980,52262,server,partial,package
 app/src/main/java/com/openminis/app/agent/jobs/ModelTierResolver.kt,android,kotlin,281,13231,server,partial,package
 app/src/main/java/com/openminis/app/agent/jobs/SubAgentTermination.kt,android,kotlin,481,21865,server,partial,package
 app/src/main/java/com/openminis/app/agent/shell/BashismDetector.kt,android,kotlin,171,6274,server,partial,package
@@ -490,11 +490,11 @@ app/src/main/java/com/openminis/app/scheduled/ScheduledTaskMarker.kt,android,kot
 app/src/main/java/com/openminis/app/scheduled/ScheduledTaskStore.kt,android,kotlin,133,5456,device-trigger+server-runner,implemented,package
 app/src/main/java/com/openminis/app/scheduled/ScheduledWait.kt,android,kotlin,165,7557,device-trigger+server-runner,implemented,package
 app/src/main/java/com/openminis/app/server/RemoteTerminalSession.kt,android,kotlin,155,6314,server-bridge,implemented,file override
-app/src/main/java/com/openminis/app/server/ServerAgentClient.kt,android,kotlin,344,15524,server-bridge,implemented,file override
+app/src/main/java/com/openminis/app/server/ServerAgentClient.kt,android,kotlin,436,20465,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/server/ServerBootstrap.kt,android,kotlin,120,5718,server-bridge,implemented,file override
-app/src/main/java/com/openminis/app/server/ServerFileSync.kt,android,kotlin,88,3686,server-bridge,implemented,file override
+app/src/main/java/com/openminis/app/server/ServerFileSync.kt,android,kotlin,155,7102,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/server/ServerSettings.kt,android,kotlin,37,1376,server-bridge,implemented,file override
-app/src/main/java/com/openminis/app/server/ServerWire.kt,android,kotlin,101,4485,server-bridge,implemented,file override
+app/src/main/java/com/openminis/app/server/ServerWire.kt,android,kotlin,102,4536,server-bridge,implemented,file override
 app/src/main/java/com/openminis/app/service/AgentForegroundService.kt,android,kotlin,1629,86171,device,device-only,package
 app/src/main/java/com/openminis/app/service/AgentNotificationContent.kt,android,kotlin,276,12794,device,device-only,package
 app/src/main/java/com/openminis/app/service/BackgroundInterruptionTracker.kt,android,kotlin,55,1812,device,device-only,package
@@ -603,8 +603,8 @@ app/src/main/java/com/openminis/app/ui/chat/ChatScreenHelpers.kt,android,kotlin,
 app/src/main/java/com/openminis/app/ui/chat/ChatToolDetailUI.kt,android,kotlin,1681,92729,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/chat/ChatToolFormatting.kt,android,kotlin,190,8265,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/chat/ChatUserMessageUI.kt,android,kotlin,807,41083,ui,ui-only,package
-app/src/main/java/com/openminis/app/ui/chat/ChatViewModel.kt,android,kotlin,20940,1204225,server+ui-state,partial,ui logic override
-app/src/main/java/com/openminis/app/ui/chat/ChatViewModelMentionExt.kt,android,kotlin,224,9149,ui,ui-only,ui logic override
+app/src/main/java/com/openminis/app/ui/chat/ChatViewModel.kt,android,kotlin,20952,1204924,server+ui-state,partial,ui logic override
+app/src/main/java/com/openminis/app/ui/chat/ChatViewModelMentionExt.kt,android,kotlin,233,9491,ui,ui-only,ui logic override
 app/src/main/java/com/openminis/app/ui/chat/ChatViewModelSlashExt.kt,android,kotlin,299,13633,ui,ui-only,ui logic override
 app/src/main/java/com/openminis/app/ui/chat/ChatViewModelStore.kt,android,kotlin,825,38908,ui,ui-only,ui logic override
 app/src/main/java/com/openminis/app/ui/chat/ChatViewModelUiStateExt.kt,android,kotlin,134,5179,ui,ui-only,ui logic override
@@ -762,7 +762,7 @@ app/src/main/java/com/openminis/app/ui/sandbox/ContainerDnsScreen.kt,android,kot
 app/src/main/java/com/openminis/app/ui/sandbox/ContainerNetworkSection.kt,android,kotlin,155,7349,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserDeletePolicy.kt,android,kotlin,115,5107,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserScreen.kt,android,kotlin,834,34421,ui,ui-only,package
-app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserViewModel.kt,android,kotlin,558,23824,ui,ui-only,package
+app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserViewModel.kt,android,kotlin,564,24203,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sandbox/FilePreviewScreen.kt,android,kotlin,1583,68691,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sandbox/MarkdownPreviewLinks.kt,android,kotlin,40,1801,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sandbox/MirrorSettingsScreen.kt,android,kotlin,824,32769,ui,ui-only,package
@@ -780,7 +780,7 @@ app/src/main/java/com/openminis/app/ui/sessions/SearchHighlight.kt,android,kotli
 app/src/main/java/com/openminis/app/ui/sessions/SessionDuplicateTitle.kt,android,kotlin,81,3616,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sessions/SessionListScreen.kt,android,kotlin,4019,198184,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/sessions/SessionListViewModel.kt,android,kotlin,1016,50201,ui,ui-only,package
-app/src/main/java/com/openminis/app/ui/sessions/SessionTitleRegenerator.kt,android,kotlin,280,14803,server,partial,ui logic override
+app/src/main/java/com/openminis/app/ui/sessions/SessionTitleRegenerator.kt,android,kotlin,288,15236,server,partial,ui logic override
 app/src/main/java/com/openminis/app/ui/settings/AboutScreen.kt,android,kotlin,152,6397,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/settings/AddCustomModelScreen.kt,android,kotlin,102,3848,ui,ui-only,package
 app/src/main/java/com/openminis/app/ui/settings/AddModelsToGroupScreen.kt,android,kotlin,162,7395,ui,ui-only,package

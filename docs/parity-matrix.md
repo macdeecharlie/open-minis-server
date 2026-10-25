@@ -24,14 +24,14 @@ python3 scripts/android_inventory.py --mode repo --source /path/to/OpenMinis \
 
 | Scope | Files | Lines | Meaning |
 |---|---:|---:|---|
-| `android` | 2,175 | 850,779 | Delivery target; every row has an owner/status. |
+| `android` | 2,175 | 850,979 | Delivery target; every row has an owner/status. |
 | `ios-reference` | 1,314 | 1,279,362 | Behavioural reference. Out of scope for the Android build, but accounted for. |
 | `dependency` | 456 | 226,141 | Vendored upstream source (`deps/`); not OpenMinis logic. |
 | `shared` | 21 | 8,780 | Cross-platform assets used by the apps. |
 | `project` | 38 | 8,349 | Scripts, CI, docs and repository metadata. |
-| **total** | **4,004** | **2,373,411** | Every tracked/untracked source file in the official repo. |
+| **total** | **4,004** | **2,373,611** | Every tracked/untracked source file in the official repo. |
 
-Android-only snapshot: **2,179 files / 864,892 lines** (includes tests,
+Android-only snapshot: **2,179 files / 865,092 lines** (includes tests,
 resources, generated schemas and bundled assets). `unclassified` rows: **0**
 in both inventories. Files ignored by `.gitignore` (local SDK paths, build
 outputs) are intentionally not part of the accounting.
@@ -95,12 +95,15 @@ outputs) are intentionally not part of the accounting.
    by the app; the server receives fragments. Moving the stores would let
    server-originated headless runs use memory/skills/MCP and remove the
    structured-fragment bridge.
-3. **Agent-loop edge semantics.** Mid-run steering/queued-prompt injection, SSE
-   run replay/reconnect, interrupted-tail repair, user-ask recovery across
-   process death, subagent budgets/closing nudges, and concurrent tool dispatch.
+3. **Agent-loop edge semantics.** The server supports steering and replay
+   (`/steer`, `/events?after=`); the Android queued-prompt UI still drains after
+   the run instead of calling `/steer`. Interrupted-tail repair, user-ask
+   recovery across process death, subagent budgets/closing nudges and
+   concurrent tool dispatch remain app-side.
 4. **Config write confirmation.** `minis-config get` is server-backed.
-   `minis-config set` returns `CONFIRMATION_REQUIRED` because the app's
-   confirmation sheet is not yet reachable from a server-originated CLI call.
+   `minis-config set default_model` returns a pending token; after `user_ask`
+   approval, `minis-config confirm --token` applies it and writes the config
+   file. Other config fields are still app-only.
 5. **File browser write UI.** The server API supports list/read/upload/delete/
    rename/mkdir and the browser deletes server files. The File-backed browser
    is still a one-way workspace cache, so upload/rename UI actions and
@@ -128,6 +131,11 @@ outputs) are intentionally not part of the accounting.
   including a device CLI shell command (`android-device info`).
 - Server PTY terminal verified through Caddy and the server proxy: Debian bash
   prompt, command echo and real command output.
+- Run replay verified mid-run and after completion; steering verified with a
+  blocked client-tool run.
+- `minis-config` pending/confirm flow verified live; config remains mode 600.
+- `minis-mcp-cli` verified inside the sandbox against a temporary stdio MCP
+  server (`list`, `tools`, `call`).
 - Server file API verified end-to-end: list, upload, raw download, delete,
   rename, mkdir, and workspace removal on session delete.
 - Sandbox CLI tools verified: `minis-sessions-cli list/messages`,
