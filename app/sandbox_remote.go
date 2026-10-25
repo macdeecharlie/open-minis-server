@@ -259,6 +259,12 @@ func (r *remoteSandbox) Upload(p string, data []byte) error {
 	return nil
 }
 
+func (r *remoteSandbox) RemoveSession() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return r.postJSON(ctx, "/v1/session/delete", map[string]any{"session_id": r.session}, nil)
+}
+
 func (r *remoteSandbox) EditFile(p, oldString, newString string, replaceAll bool) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

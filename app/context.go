@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"unicode/utf8"
@@ -304,6 +305,25 @@ func applyCompaction(messages []WireMessage, split int, summary string) []WireMe
 	return append([]WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: wrapped}}}}, tail...)
 }
 
+// applyStoredCompaction reuses a summary persisted by an earlier run when the
+// anchor message is still present in the history. Without this every turn
+// would summarize the same old span again. If the client compacted locally and
+// the anchor is gone, the caller falls back to the normal threshold check.
+func applyStoredCompaction(messages []WireMessage, summary, anchor string) ([]WireMessage, bool) {
+	if strings.TrimSpace(summary) == "" || anchor == "" {
+		return messages, false
+	}
+	for i, m := range messages {
+		if m.ID == anchor {
+			if i+1 >= len(messages) {
+				return messages, false
+			}
+			return applyCompaction(messages, i+1, summary), true
+		}
+	}
+	return messages, false
+}
+
 // maybeCompact checks the outbound request and summarizes older history when
 // it crosses the window's compact line. It returns the messages to send and
 // whether a compaction happened.
@@ -340,6 +360,15 @@ func (s *Server) maybeCompact(run *Run, messages []WireMessage, system string, t
 	summary, err := s.summarizeMessages(run.ctx, provider, model, messages[:split], "", 0, &calls)
 	if err != nil {
 		return messages, false, fmt.Errorf("context compaction failed: %w", err)
+	}
+	anchor := ""
+	if split > 0 && split-1 < len(messages) {
+		anchor = messages[split-1].ID
+	}
+	if anchor != "" {
+		if err := s.store.SetSummary(run.Session, summary, anchor); err != nil {
+			log.Printf("store compact summary: %v", err)
+		}
 	}
 	compacted := applyCompaction(messages, split, summary)
 	if estimatedRequestTokens(system, compacted, tools) >= window {

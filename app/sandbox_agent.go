@@ -72,6 +72,7 @@ func (a *sandboxAgent) handler() http.Handler {
 	mux.Handle("POST /v1/files/list", a.auth(http.HandlerFunc(a.listDir)))
 	mux.Handle("POST /v1/files/raw", a.auth(http.HandlerFunc(a.rawFile)))
 	mux.Handle("POST /v1/files/upload", a.auth(http.HandlerFunc(a.uploadFile)))
+	mux.Handle("POST /v1/session/delete", a.auth(http.HandlerFunc(a.deleteSession)))
 	mux.Handle("POST /v1/terminal", a.terminalHandler(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/input", a.terminalInput(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/resize", a.terminalResize(a.terminals))
@@ -300,6 +301,27 @@ func (a *sandboxAgent) writeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *sandboxAgent) deleteSession(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		sandboxRequest
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024))
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	sb, err := a.sandboxFor(req.sandboxRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sb.RemoveSession(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *sandboxAgent) listDir(w http.ResponseWriter, r *http.Request) {

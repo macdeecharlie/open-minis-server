@@ -44,6 +44,7 @@ type ToolSandbox interface {
 	ListDir(p string) ([]FileEntry, error)
 	ReadRaw(p string) ([]byte, string, error)
 	Upload(p string, data []byte) error
+	RemoveSession() error
 }
 
 type Sandbox struct {
@@ -569,6 +570,15 @@ func (s *Sandbox) Upload(p string, data []byte) error {
 	}
 	s.own(path)
 	return nil
+}
+
+// RemoveSession deletes this session's workspace, attachments, offloads and
+// browser artifacts. It is called when the user deletes the chat.
+func (s *Sandbox) RemoveSession() error {
+	if s.root == "" || filepath.Base(s.root) != s.sessionID {
+		return errors.New("refusing to remove an unverified session directory")
+	}
+	return os.RemoveAll(s.root)
 }
 
 func (s *Sandbox) Validate() error {

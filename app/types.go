@@ -9,6 +9,7 @@ import (
 // AgentMessage type in the Android client so the client can send its existing
 // history without translating it into an OpenAI/Anthropic specific form.
 type WireMessage struct {
+	ID               string     `json:"id,omitempty"`
 	Role             string     `json:"role"`
 	Parts            []WirePart `json:"parts"`
 	ReasoningContent string     `json:"reasoning_content,omitempty"`
@@ -122,6 +123,11 @@ type SessionMeta struct {
 	CreatedAt    int64  `json:"created_at"`
 	UpdatedAt    int64  `json:"updated_at"`
 	MessageCount int    `json:"message_count"`
+	// Compacted history is stored as a summary anchored to the last message
+	// it covers, so the next run reuses it instead of summarizing again.
+	Summary         string `json:"summary,omitempty"`
+	SummaryAnchorID string `json:"summary_anchor_id,omitempty"`
+	SummaryAt       int64  `json:"summary_at,omitempty"`
 }
 
 type Event struct {

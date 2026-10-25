@@ -511,6 +511,12 @@ func TestRemoteSandboxRoundTrip(t *testing.T) {
 	if _, err := bad.RunShell(ctx, "echo nope", time.Second, 0, nil); err == nil {
 		t.Fatal("wrong sandbox token was accepted")
 	}
+	if err := sb.RemoveSession(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sb.ReadFile("/var/minis/workspace/a.txt", 1, 0, 1000); err == nil {
+		t.Fatal("workspace file still exists after RemoveSession")
+	}
 }
 
 func TestSandboxAgentHealth(t *testing.T) {
@@ -1078,5 +1084,71 @@ func TestRequestImageBudget(t *testing.T) {
 	}
 	if out[2].Parts[1].Type != "image" {
 		t.Fatalf("new image was dropped: %+v", out[2].Parts[1])
+	}
+}
+
+func TestSessionMetaAndDeleteRemovesWorkspace(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	do := func(method, path string, body any) int {
+		var rdr io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rdr = bytes.NewReader(b)
+		}
+		req, _ := http.NewRequest(method, ts.URL+path, rdr)
+		req.Header.Set("Authorization", "Bearer test-token")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := do("POST", "/v1/sessions/sess-meta/meta", map[string]any{"title": "Renamed"}); code != 200 {
+		t.Fatalf("meta HTTP %d", code)
+	}
+	meta, err := store.GetSession("sess-meta")
+	if err != nil || meta.Title != "Renamed" {
+		t.Fatalf("meta = %+v err=%v", meta, err)
+	}
+	if _, err := store.AppendMessage(StoredMessage{ID: "u1", SessionID: "sess-meta", Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}); err != nil {
+		t.Fatal(err)
+	}
+	sb, _ := NewSandbox(cfg.Sandbox, "sess-meta")
+	if err := sb.WriteFile("/var/minis/workspace/gone.txt", "x", false, true); err != nil {
+		t.Fatal(err)
+	}
+	if code := do("DELETE", "/v1/sessions/sess-meta", nil); code != 204 {
+		t.Fatalf("delete HTTP %d", code)
+	}
+	if _, err := store.GetSession("sess-meta"); err == nil {
+		t.Fatal("session meta still exists")
+	}
+	if _, err := sb.ReadFile("/var/minis/workspace/gone.txt", 1, 0, 100); err == nil {
+		t.Fatal("session workspace still exists")
+	}
+}
+
+func TestStoredCompactionIsReused(t *testing.T) {
+	messages := []WireMessage{
+		{ID: "m1", Role: "user", Parts: []WirePart{{Type: "text", Text: "old"}}},
+		{ID: "m2", Role: "assistant", Parts: []WirePart{{Type: "text", Text: "old reply"}}},
+		{ID: "m3", Role: "user", Parts: []WirePart{{Type: "text", Text: "recent"}}},
+	}
+	out, ok := applyStoredCompaction(messages, "summary of old", "m2")
+	if !ok || len(out) != 1 {
+		t.Fatalf("applied=%v out=%+v", ok, out)
+	}
+	if !strings.Contains(out[0].Parts[0].Text, "summary of old") || !strings.Contains(out[0].Parts[1].Text, "recent") {
+		t.Fatalf("out = %+v", out[0].Parts)
+	}
+	if _, ok := applyStoredCompaction(messages, "summary", "missing"); ok {
+		t.Fatal("applied a summary whose anchor is absent")
 	}
 }

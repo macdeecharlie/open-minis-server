@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/sessions", s.auth(http.HandlerFunc(s.handleListSessions)))
 	mux.Handle("GET /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleGetSession)))
 	mux.Handle("DELETE /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleDeleteSession)))
+	mux.Handle("POST /v1/sessions/{id}/meta", s.auth(http.HandlerFunc(s.handleSessionMeta)))
 	mux.Handle("GET /v1/status", s.auth(http.HandlerFunc(s.handleStatus)))
 	mux.Handle("POST /v1/admin/config", s.auth(http.HandlerFunc(s.handleAdminConfig)))
 	mux.Handle("POST /v1/admin/provider", s.auth(http.HandlerFunc(s.handleAdminProvider)))
@@ -333,10 +334,39 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"session": meta, "messages": msgs})
 }
 
-func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteSession(r.PathValue("id")); err != nil {
+func (s *Server) handleSessionMeta(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title *string `json:"title"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 1<<20); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if req.Title == nil || strings.TrimSpace(*req.Title) == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if err := s.store.UpdateSessionTitle(r.PathValue("id"), strings.TrimSpace(*req.Title)); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.DeleteSession(id); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if sb, err := NewToolSandbox(s.cfg.Sandbox, id); err == nil {
+		if err := sb.RemoveSession(); err != nil {
+			log.Printf("delete session workspace %s: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "session record deleted, but its workspace could not be removed: "+err.Error())
+			return
+		}
+	} else {
+		log.Printf("delete session workspace %s: %v", id, err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

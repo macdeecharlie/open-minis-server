@@ -258,6 +258,34 @@ func (s *Store) GetSession(id string) (*SessionMeta, error) {
 	return &cp, nil
 }
 
+// SetSummary records the newest compaction summary and the last message it
+// covers. It is called by the agent loop after a successful compaction.
+func (s *Store) SetSummary(id, summary, anchor string) error {
+	if !sessionIDPattern.MatchString(id) {
+		return errors.New("invalid session id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.meta[id]
+	if m == nil {
+		return os.ErrNotExist
+	}
+	m.Summary = summary
+	m.SummaryAnchorID = anchor
+	m.SummaryAt = nowMillis()
+	return s.writeMeta(m)
+}
+
+func (s *Store) Summary(id string) (string, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.meta[id]
+	if m == nil {
+		return "", ""
+	}
+	return m.Summary, m.SummaryAnchorID
+}
+
 // UpdateSessionTitle changes a session's displayed title without touching its
 // transcript, matching minis-sessions-cli update --title.
 func (s *Store) UpdateSessionTitle(id, title string) error {
@@ -268,7 +296,8 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 	defer s.mu.Unlock()
 	m := s.meta[id]
 	if m == nil {
-		return os.ErrNotExist
+		m = &SessionMeta{ID: id, CreatedAt: nowMillis()}
+		s.meta[id] = m
 	}
 	m.Title = title
 	m.UpdatedAt = nowMillis()

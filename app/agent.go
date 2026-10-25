@@ -13,6 +13,7 @@ import (
 
 type Run struct {
 	ID       string
+	Session  string
 	Headless bool
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -175,6 +176,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		run.emit("error", map[string]any{"message": "invalid or missing session_id"})
 		return
 	}
+	run.Session = sessionID
 	if _, err := s.store.EnsureSession(sessionID, req.Model); err != nil {
 		run.emit("error", map[string]any{"message": "session store: " + err.Error()})
 		return
@@ -267,6 +269,11 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 
 	messages := append([]WireMessage(nil), req.Messages...)
+	if summary, anchor := s.store.Summary(sessionID); summary != "" {
+		if applied, ok := applyStoredCompaction(messages, summary, anchor); ok {
+			messages = applied
+		}
+	}
 	if budgeted, dropped := applyImageBudget(messages); dropped > 0 {
 		messages = budgeted
 		run.emit("info", map[string]any{"text": fmt.Sprintf("%d older image(s) were omitted to stay within the request image budget.", dropped)})
