@@ -3,6 +3,15 @@
 This file records how the refactor was verified. Commands that touched live
 credentials are described by their effect; no token values are reproduced.
 
+## Inventory coverage
+
+`repo-code-inventory.csv` walks the checkout including the `deps/ish` and
+`deps/proot` submodules: **8,067 files / 3,460,420 lines** (Android 2,186 /
+865,495; iOS reference 1,314 / 1,279,362; dependencies 4,508 / 1,298,434;
+shared 21 / 8,780; project 38 / 8,349). Seven Android files are marked
+`provenance=refactor`; all other Android rows are upstream. `unclassified` is
+zero. Build output (`.git`, `deps/build`, Gradle outputs) is excluded.
+
 ## Automated checks
 
 ```sh
@@ -60,14 +69,16 @@ The test suite covers:
   - `minis-scheduled list`.
   - `minis-mcp-cli list/tools/call` against a temporary stdio MCP server,
     returning the expected tool output.
-- Release feed lists 1.16.6/build 44; authenticated APK download is 44,848,236
-  bytes and its digest matches the release `.sha256`.
+- Release feed lists 1.16.9/build 47; authenticated APK download is 44,853,112
+  bytes, SHA-256 `93a5762714caa2c4abb38ce1f01b28da0646da856cfc47ce03ae879c2468d822`,
+  matching the release `.sha256`.
 - APK signature SHA-256 is the stable
   `ab5b668386da52fdc4476a9eb86a68a10daeacecb8453301ed73c25188d706ee`
-  (DN `CN=Android Debug`), versionCode 44, versionName 1.16.6.
+  (DN `CN=Android Debug`), versionCode 47, versionName 1.16.9.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
 - APK 1.16.7/build 45 and 1.16.8/build 46 have the same stable certificate and
-  matching digests. 1.16.9/build 47 is the source release after them.
+  matching digests. 1.16.10/build 48 (helper prompt fix) is the source release
+  in CI at this snapshot.
 
 ## Not verified (environment limits)
 
