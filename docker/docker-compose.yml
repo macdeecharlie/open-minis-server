@@ -35,6 +35,8 @@ services:
     image: open-minis-sandbox:latest
     container_name: minis-sandbox
     restart: unless-stopped
+    # Reap orphaned shell/MCP grandchildren; PID 1 is the Go agent.
+    init: true
     env_file:
       - ../.env
     environment:
