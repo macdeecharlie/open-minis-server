@@ -9,3 +9,6 @@ app/*.test
 # Local secrets
 *.local.json
 .env
+
+# Local deployment staging
+.deploy/

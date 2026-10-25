@@ -11,6 +11,9 @@ services:
       APP_GIT_BRANCH: main
       MINIS_CONFIG: /data/config.json
       MINIS_LISTEN: ":8080"
+      # Optional: read-only token for the private Android release repo. Set it
+      # in ../.env (never in this file) and restart the container.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
       - ../data:/data
     networks:
