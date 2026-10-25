@@ -141,6 +141,8 @@ at startup rather than starting with a silent fallback.
 | `POST` | `/v1/agent/runs` | Start a streamed agent run (SSE). |
 | `POST` | `/v1/agent/runs/{id}/tool_result` | Return a device-bound tool result. |
 | `POST` | `/v1/agent/runs/{id}/cancel` | Stop a run and its shell processes. |
+| `GET` | `/v1/agent/runs/{id}/events` | Replay a run from `?after=N` / Last-Event-ID. |
+| `POST` | `/v1/agent/runs/{id}/steer` | Inject a user message between turns. |
 | `GET` | `/v1/sessions` | Session index for the future Web UI. |
 | `GET` | `/v1/sessions/{id}` | Stored messages for one session. |
 | `GET/POST` | `/v1/scheduled` | List or upsert server-owned scheduled tasks. |
@@ -155,6 +157,7 @@ at startup rather than starting with a silent fallback.
 | `POST` | `/v1/terminal` | Open a PTY in the Debian sandbox (SSE). |
 | `POST` | `/v1/terminal/{id}/input` | Send terminal input bytes. |
 | `POST` | `/v1/terminal/{id}/resize` | Resize the PTY. |
+| `POST` | `/v1/cli/config/confirm` | Apply a user-approved `minis-config` change. |
 | `POST` | `/v1/terminal/{id}/close` | Close the terminal. |
 | `POST` | `/v1/sessions/{id}/meta` | Update a server session title. |
 | `GET/POST` | `/v1/cli/*` | Sandbox-token API used by the `minis-*` CLI tools. |
