@@ -114,7 +114,11 @@ func (t *terminal) close() {
 		t.ptmx = nil
 	}
 	if t.cmd != nil && t.cmd.Process != nil {
-		_ = syscall.Kill(-t.cmd.Process.Pid, syscall.SIGKILL)
+		proc := t.cmd
+		_ = syscall.Kill(-proc.Process.Pid, syscall.SIGKILL)
+		// Reap the child; otherwise every closed terminal leaves a zombie
+		// because the sandbox agent is PID 1 and has no init to adopt it.
+		go func() { _ = proc.Wait() }()
 	}
 	t.cmd = nil
 }
