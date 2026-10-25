@@ -23,17 +23,21 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		msgs = append([]map[string]any{{"role": "system", "content": req.System}}, msgs...)
 	}
 	body := map[string]any{
-		"model":      req.Model.ID,
-		"messages":   msgs,
-		"stream":     true,
-		"max_tokens": effectiveMaxTokens(req.Model, req.MaxTokens),
+		"model":    req.Model.ID,
+		"messages": msgs,
+		"stream":   true,
+	}
+	if openAIUsesCompletionTokens(p.cfg.BaseURL, req.Model.ID) {
+		body["max_completion_tokens"] = effectiveMaxTokens(req.Model, req.MaxTokens)
+	} else {
+		body["max_tokens"] = effectiveMaxTokens(req.Model, req.MaxTokens)
 	}
 	if len(req.Tools) > 0 {
 		body["tools"] = req.Tools
 		body["tool_choice"] = "auto"
 	}
-	if req.Model.SupportsReasoning && strings.TrimSpace(strings.ToUpper(req.Thinking)) != "" && strings.ToUpper(req.Thinking) != "OFF" {
-		body["reasoning_effort"] = strings.ToLower(req.Thinking)
+	if effort := openAIReasoningEffort(req.Model, req.Thinking); effort != "" {
+		body["reasoning_effort"] = effort
 	}
 	body["stream_options"] = map[string]any{"include_usage": true}
 
@@ -315,4 +319,32 @@ func openAIMessages(msgs []WireMessage) ([]map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+func openAIUsesCompletionTokens(baseURL, modelID string) bool {
+	base := strings.ToLower(baseURL)
+	if strings.Contains(base, "api.openai.com") {
+		return true
+	}
+	id := strings.ToLower(modelID)
+	return strings.HasPrefix(id, "gpt-5") || strings.HasPrefix(id, "o3") || strings.HasPrefix(id, "o4")
+}
+
+// OpenAI accepts minimal/low/medium/high. The app's richer levels (xhigh,
+// max, ultra) are UI intent, not API values; clamp them rather than sending a
+// value the provider rejects.
+func openAIReasoningEffort(model *Model, thinking string) string {
+	if !model.SupportsReasoning {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(thinking)) {
+	case "", "off":
+		return ""
+	case "minimal", "low", "medium", "high":
+		return strings.ToLower(thinking)
+	case "xhigh", "max", "ultra":
+		return "high"
+	default:
+		return "medium"
+	}
 }

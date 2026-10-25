@@ -65,9 +65,10 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 			Candidates []struct {
 				Content struct {
 					Parts []struct {
-						Text         string `json:"text"`
-						Thought      bool   `json:"thought"`
-						FunctionCall *struct {
+						Text             string `json:"text"`
+						Thought          bool   `json:"thought"`
+						ThoughtSignature string `json:"thoughtSignature"`
+						FunctionCall     *struct {
 							Name string          `json:"name"`
 							Args json.RawMessage `json:"args"`
 						} `json:"functionCall"`
@@ -116,7 +117,7 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 					if args == "" || args == "null" {
 						args = "{}"
 					}
-					if err := emit(ProviderEvent{Kind: "tool_call", ID: id, Name: part.FunctionCall.Name, Args: args}); err != nil {
+					if err := emit(ProviderEvent{Kind: "tool_call", ID: id, Name: part.FunctionCall.Name, Args: args, Signature: part.ThoughtSignature}); err != nil {
 						return err
 					}
 					continue
@@ -193,7 +194,11 @@ func geminiContents(msgs []WireMessage) ([]map[string]any, error) {
 				}
 				var obj any
 				_ = json.Unmarshal(args, &obj)
-				parts = append(parts, map[string]any{"functionCall": map[string]any{"name": p.Name, "args": obj}})
+				part := map[string]any{"functionCall": map[string]any{"name": p.Name, "args": obj}}
+				if p.ThoughtSignature != "" {
+					part["thoughtSignature"] = p.ThoughtSignature
+				}
+				parts = append(parts, part)
 			case "tool_result":
 				parts = append(parts, map[string]any{"functionResponse": map[string]any{
 					"name": p.Name,

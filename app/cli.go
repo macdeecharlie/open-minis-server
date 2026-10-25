@@ -169,8 +169,12 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 	limit := fs.Int("limit", 20, "maximum sessions")
 	id := fs.String("id", "", "session id")
 	keywords := fs.String("keywords", "", "keywords")
+	start := fs.String("start", "", "start date YYYY-MM-DD")
+	end := fs.String("end", "", "end date YYYY-MM-DD")
+	group := fs.String("group", "", "group name")
 	tools := fs.Bool("tools", false, "include tool calls and outputs")
 	title := fs.String("title", "", "new title")
+	maxItems := fs.Int("max", 0, "maximum sessions")
 	if done, code := helpOrError(fs, argv, sessionsHelp); done {
 		return code
 	}
@@ -185,6 +189,18 @@ func runSessionsCLI(c *cliClient, argv []string) int {
 		}
 		if *keywords != "" {
 			q.Set("q", *keywords)
+		}
+		if *start != "" {
+			q.Set("start", *start)
+		}
+		if *end != "" {
+			q.Set("end", *end)
+		}
+		if *group != "" {
+			q.Set("group", *group)
+		}
+		if *maxItems > 0 {
+			q.Set("limit", strconv.Itoa(*maxItems))
 		}
 		var res map[string]any
 		if err := c.do("GET", "/v1/cli/sessions?"+q.Encode(), nil, &res); err != nil {
@@ -269,6 +285,9 @@ func runConfigCLI(c *cliClient, argv []string) int {
 		argv = argv[1:]
 	}
 	fs, out := newFlagSet("minis-config")
+	filter := fs.String("filter", "", "filter array fields")
+	page := fs.Int("page", 0, "page number")
+	pageSize := fs.Int("page-size", 0, "page size")
 	if sub == "set" {
 		if len(argv) == 0 || argv[0] == "--help" || argv[0] == "-h" {
 			fmt.Print(configHelp)
@@ -286,7 +305,15 @@ func runConfigCLI(c *cliClient, argv []string) int {
 		return code
 	}
 	switch sub {
+	case "topic-help":
+		topic := "defaults"
+		if fs.NArg() > 0 {
+			topic = fs.Arg(0)
+		}
+		fmt.Printf("Topics: defaults, providers, models. Secrets are never returned.\nRequested: %s\n", topic)
+		return 0
 	case "get":
+		_, _, _ = *filter, *page, *pageSize
 		topic := "defaults"
 		if fs.NArg() > 0 {
 			topic = fs.Arg(0)

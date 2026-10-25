@@ -34,6 +34,7 @@ RUN apt-get update \
         procps \
         python3 \
         python3-pip \
+        python3-httpx \
         python3-venv \
         ripgrep \
         sqlite3 \
@@ -48,6 +49,9 @@ RUN apt-get update \
     && mkdir -p /workspace/sessions /root
 
 COPY --from=build /out/minis-server /usr/local/bin/minis-server
+COPY docker/sandbox/mcp-cli/bin/minis-mcp-cli /usr/local/bin/minis-mcp-cli
+COPY docker/sandbox/mcp-cli/lib/ /usr/local/lib/minis-mcp-cli/
+RUN chmod +x /usr/local/bin/minis-mcp-cli
 # Agent-facing CLI names, dispatched by argv[0] in main(). They replace the
 # PRoot native_offload handlers with server-backed tools.
 RUN for name in minis-sessions-cli minis-config minis-model-use minis-scheduled; do \

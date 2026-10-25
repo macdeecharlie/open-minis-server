@@ -495,6 +495,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 							args = "{}"
 						}
 						c.part.Args = json.RawMessage(args)
+						c.part.ThoughtSignature = ev.Signature
 						c.completed = true
 						executor := "client"
 						if serverToolNames[c.part.Name] && !clientOwnedCall(c.part.Name, c.part.Args) {

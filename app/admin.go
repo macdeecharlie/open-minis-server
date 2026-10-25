@@ -35,6 +35,9 @@ func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 	if next.Sandbox.WorkRoot == "" {
 		next.Sandbox.WorkRoot = filepath.Join(next.DataDir, "workspaces")
 	}
+	if next.Sandbox.GlobalRoot == "" {
+		next.Sandbox.GlobalRoot = s.cfg.Sandbox.GlobalRoot
+	}
 	if next.Sandbox.ShellUser == "" {
 		next.Sandbox.ShellUser = s.cfg.Sandbox.ShellUser
 	}

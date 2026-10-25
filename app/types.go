@@ -76,12 +76,13 @@ type Usage struct {
 }
 
 type ProviderEvent struct {
-	Kind  string
-	Text  string
-	ID    string
-	Name  string
-	Args  string
-	Usage *Usage
+	Kind      string
+	Text      string
+	ID        string
+	Name      string
+	Args      string
+	Signature string
+	Usage     *Usage
 }
 
 type ProviderResult struct {

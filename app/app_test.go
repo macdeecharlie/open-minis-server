@@ -717,7 +717,7 @@ func TestGeminiProviderParsesTextAndTools(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"text":"Gemini hi"}]}}]}`+"\n\n")
-		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"shell_execute","args":{"command":"echo hi"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":3}}`+"\n\n")
+		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"thoughtSignature":"sig-123","functionCall":{"name":"shell_execute","args":{"command":"echo hi"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":3}}`+"\n\n")
 	}))
 	defer ts.Close()
 	p := &geminiProvider{cfg: &Provider{ID: "g", Kind: "gemini", BaseURL: ts.URL, APIKey: "k"}, http: newProviderHTTP()}
@@ -737,8 +737,14 @@ func TestGeminiProviderParsesTextAndTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text.String() != "Gemini hi" || call.Name != "shell_execute" || !strings.Contains(call.Args, "echo hi") {
+	if text.String() != "Gemini hi" || call.Name != "shell_execute" || !strings.Contains(call.Args, "echo hi") || call.Signature != "sig-123" {
 		t.Fatalf("text=%q call=%+v", text.String(), call)
+	}
+	contents, err := geminiContents([]WireMessage{{Role: "assistant", Parts: []WirePart{{
+		Type: "tool_use", ID: "x", Name: "shell_execute", Args: json.RawMessage(`{"command":"echo hi"}`), ThoughtSignature: "sig-123",
+	}}}})
+	if err != nil || !strings.Contains(fmt.Sprint(contents), "sig-123") {
+		t.Fatalf("contents did not preserve the thought signature: %+v err=%v", contents, err)
 	}
 	if res.StopReason != "tool_use" || res.Usage.InputTokens != 9 {
 		t.Fatalf("result=%+v", res)
@@ -1399,5 +1405,32 @@ func TestRunSteering(t *testing.T) {
 	}
 	if !sawSteered {
 		t.Fatal("steer was not observed by the run")
+	}
+}
+
+func TestGlobalMcpConfigIsSharedAcrossSessions(t *testing.T) {
+	root := t.TempDir()
+	cfg := SandboxConfig{WorkRoot: filepath.Join(root, "sessions"), GlobalRoot: filepath.Join(root, "global"), MaxOutput: 1_000_000}
+	a, err := NewSandbox(cfg, "sess-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewSandbox(cfg, "sess-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.WriteFile("/var/minis/mcp-servers/servers.json", `{"mcpServers":{"demo":{"command":"echo"}}}`, false, true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.ReadFile("/var/minis/mcp-servers/servers.json", 1, 0, 1000)
+	if err != nil || !strings.Contains(got, "mcpServers") {
+		t.Fatalf("shared read = %q err=%v", got, err)
+	}
+	res, err := b.RunShell(context.Background(), "cat /var/minis/mcp-servers/servers.json", 10*time.Second, 0, nil)
+	if err != nil || !strings.Contains(res.Output, "mcpServers") {
+		t.Fatalf("rewritten shell read = %q err=%v", res.Output, err)
+	}
+	if _, err := b.ReadFile("/var/minis/workspace/mcp-servers/servers.json", 1, 0, 100); err == nil {
+		t.Fatal("global MCP config leaked into the session workspace")
 	}
 }

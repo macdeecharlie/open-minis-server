@@ -54,6 +54,7 @@ type Sandbox struct {
 	cfg         SandboxConfig
 	sessionID   string
 	root        string
+	globalRoot  string
 	workspace   string
 	attachments string
 	uid         int
@@ -65,16 +66,21 @@ func NewSandbox(cfg SandboxConfig, sessionID string) (*Sandbox, error) {
 		return nil, errors.New("invalid session id")
 	}
 	root := filepath.Join(cfg.WorkRoot, sessionID)
+	globalRoot := cfg.GlobalRoot
+	if globalRoot == "" {
+		globalRoot = filepath.Join(filepath.Dir(cfg.WorkRoot), "global")
+	}
 	s := &Sandbox{
 		cfg:         cfg,
 		sessionID:   sessionID,
 		root:        root,
+		globalRoot:  globalRoot,
 		workspace:   filepath.Join(root, "workspace"),
 		attachments: filepath.Join(root, "attachments"),
 		uid:         -1,
 		gid:         -1,
 	}
-	for _, d := range []string{s.root, s.workspace, s.attachments, filepath.Join(root, "offloads"), filepath.Join(root, "browser")} {
+	for _, d := range []string{s.root, s.workspace, s.attachments, filepath.Join(root, "offloads"), filepath.Join(root, "browser"), filepath.Join(globalRoot, "mcp-servers")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, fmt.Errorf("create workspace: %w", err)
 		}
@@ -141,6 +147,8 @@ func (s *Sandbox) virtualPath(p string) (string, error) {
 		mapped = filepath.Join(s.root, "offloads", strings.TrimPrefix(p, "/var/minis/offloads"))
 	case p == "/var/minis/browser" || strings.HasPrefix(p, "/var/minis/browser/"):
 		mapped = filepath.Join(s.root, "browser", strings.TrimPrefix(p, "/var/minis/browser"))
+	case p == "/var/minis/mcp-servers" || strings.HasPrefix(p, "/var/minis/mcp-servers/"):
+		mapped = filepath.Join(s.globalRoot, "mcp-servers", strings.TrimPrefix(p, "/var/minis/mcp-servers"))
 	case p == "/workspace" || strings.HasPrefix(p, "/workspace/"):
 		mapped = filepath.Join(s.workspace, strings.TrimPrefix(p, "/workspace"))
 	case filepath.IsAbs(p):
@@ -152,14 +160,14 @@ func (s *Sandbox) virtualPath(p string) (string, error) {
 		mapped = filepath.Join(s.workspace, p)
 	}
 	mapped = filepath.Clean(mapped)
-	if err := s.assertWithin(mapped); err != nil {
+	if err := s.assertWithinAllowed(mapped); err != nil {
 		return "", fmt.Errorf("path escapes the session workspace: %s", p)
 	}
 	// A symlink inside the workspace is allowed only if its TARGET is also
 	// inside the workspace. Without this check `ln -s /etc/passwd x` followed
 	// by file_read("x") would read the host file.
 	if resolved, err := filepath.EvalSymlinks(mapped); err == nil {
-		if err := s.assertWithin(resolved); err != nil {
+		if err := s.assertWithinAllowed(resolved); err != nil {
 			return "", fmt.Errorf("path escapes the session workspace through a symlink: %s", p)
 		}
 		return resolved, nil
@@ -170,12 +178,21 @@ func (s *Sandbox) virtualPath(p string) (string, error) {
 	// directory cannot redirect the write either.
 	parent := filepath.Dir(mapped)
 	if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
-		if err := s.assertWithin(resolvedParent); err != nil {
+		if err := s.assertWithinAllowed(resolvedParent); err != nil {
 			return "", fmt.Errorf("path escapes the session workspace through a symlink: %s", p)
 		}
 		mapped = filepath.Join(resolvedParent, filepath.Base(mapped))
 	}
 	return mapped, nil
+}
+
+func (s *Sandbox) assertWithinAllowed(path string) error {
+	if s.globalRoot != "" {
+		if rel, err := filepath.Rel(s.globalRoot, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil
+		}
+	}
+	return s.assertWithin(path)
 }
 
 func (s *Sandbox) assertWithin(path string) error {
@@ -192,6 +209,7 @@ func (s *Sandbox) rewriteCommand(cmd string) string {
 		"/var/minis/attachments", s.attachments,
 		"/var/minis/offloads", filepath.Join(s.root, "offloads"),
 		"/var/minis/browser", filepath.Join(s.root, "browser"),
+		"/var/minis/mcp-servers", filepath.Join(s.globalRoot, "mcp-servers"),
 		"/workspace", s.workspace,
 	)
 	return replacer.Replace(cmd)

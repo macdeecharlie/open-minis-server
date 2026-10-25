@@ -19,11 +19,19 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if err != nil {
 		return ProviderResult{}, err
 	}
+	maxTokens := effectiveMaxTokens(req.Model, req.MaxTokens)
 	body := map[string]any{
 		"model":      req.Model.ID,
-		"max_tokens": effectiveMaxTokens(req.Model, req.MaxTokens),
+		"max_tokens": maxTokens,
 		"messages":   msgs,
 		"stream":     true,
+	}
+	if budget := anthropicThinkingBudget(req.Thinking); budget > 0 {
+		if maxTokens <= budget+1024 {
+			maxTokens = budget + 4096
+			body["max_tokens"] = maxTokens
+		}
+		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
 	}
 	if strings.TrimSpace(req.System) != "" {
 		body["system"] = req.System
@@ -295,4 +303,23 @@ func anthropicMessages(msgs []WireMessage) ([]map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+func anthropicThinkingBudget(thinking string) int {
+	switch strings.ToLower(strings.TrimSpace(thinking)) {
+	case "low":
+		return 1024
+	case "medium":
+		return 2048
+	case "high":
+		return 4096
+	case "xhigh":
+		return 8192
+	case "max":
+		return 16384
+	case "ultra":
+		return 24576
+	default:
+		return 0
+	}
 }

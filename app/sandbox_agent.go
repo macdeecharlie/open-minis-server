@@ -19,10 +19,11 @@ import (
 // holds are its own API bearer token. The server container holds the model and
 // update secrets and talks to this API over a private Docker network.
 type sandboxAgent struct {
-	token     string
-	workRoot  string
-	maxOutput int
-	terminals *terminalManager
+	token      string
+	workRoot   string
+	globalRoot string
+	maxOutput  int
+	terminals  *terminalManager
 }
 
 func runSandboxAgent() {
@@ -34,6 +35,10 @@ func runSandboxAgent() {
 	if workRoot == "" {
 		workRoot = "/workspace/sessions"
 	}
+	globalRoot := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_GLOBAL_ROOT"))
+	if globalRoot == "" {
+		globalRoot = "/workspace/global"
+	}
 	maxOutput := defaultMaxOutput
 	if v := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_MAX_OUTPUT")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -43,7 +48,7 @@ func runSandboxAgent() {
 	if err := os.MkdirAll(workRoot, 0o755); err != nil {
 		log.Fatalf("create sandbox work root: %v", err)
 	}
-	agent := &sandboxAgent{token: token, workRoot: workRoot, maxOutput: maxOutput, terminals: newTerminalManager()}
+	agent := &sandboxAgent{token: token, workRoot: workRoot, globalRoot: globalRoot, maxOutput: maxOutput, terminals: newTerminalManager()}
 	listen := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_LISTEN"))
 	if listen == "" {
 		listen = ":8090"
@@ -135,8 +140,9 @@ func (a *sandboxAgent) sandboxFor(req sandboxRequest) (*Sandbox, error) {
 		return nil, fmt.Errorf("invalid session id")
 	}
 	return NewSandbox(SandboxConfig{
-		WorkRoot:  a.workRoot,
-		MaxOutput: a.maxOutput,
+		WorkRoot:   a.workRoot,
+		GlobalRoot: a.globalRoot,
+		MaxOutput:  a.maxOutput,
 		// No ShellUser: commands run as root inside this dedicated container,
 		// which is the point of the full-distro execution environment.
 	}, req.SessionID)

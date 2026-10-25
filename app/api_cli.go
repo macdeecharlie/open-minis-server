@@ -42,12 +42,24 @@ func (s *Server) handleCLISessions(w http.ResponseWriter, r *http.Request) {
 	}
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	start := strings.TrimSpace(r.URL.Query().Get("start"))
+	end := strings.TrimSpace(r.URL.Query().Get("end"))
 	out := make([]map[string]any, 0, limit)
 	for _, m := range s.store.ListSessions() {
 		if id != "" && m.ID != id {
 			continue
 		}
-		if query != "" && !strings.Contains(strings.ToLower(m.Title), query) && !strings.Contains(strings.ToLower(m.ID), query) {
+		if start != "" {
+			if t, err := time.Parse("2006-01-02", start); err == nil && m.UpdatedAt < t.UnixMilli() {
+				continue
+			}
+		}
+		if end != "" {
+			if t, err := time.Parse("2006-01-02", end); err == nil && m.UpdatedAt >= t.Add(24*time.Hour).UnixMilli() {
+				continue
+			}
+		}
+		if query != "" && !s.sessionMatches(m.ID, m.Title, query) {
 			continue
 		}
 		out = append(out, map[string]any{
@@ -63,6 +75,24 @@ func (s *Server) handleCLISessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+func (s *Server) sessionMatches(id, title, query string) bool {
+	if strings.Contains(strings.ToLower(title), query) || strings.Contains(strings.ToLower(id), query) {
+		return true
+	}
+	msgs, err := s.store.Messages(id)
+	if err != nil {
+		return false
+	}
+	for _, m := range msgs {
+		for _, p := range m.Parts {
+			if p.Type == "text" && strings.Contains(strings.ToLower(p.Text), query) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Server) handleCLISearch(w http.ResponseWriter, r *http.Request) {

@@ -52,6 +52,7 @@ type SandboxConfig struct {
 	AgentToken    string `json:"agent_token,omitempty"`
 	AgentTokenEnv string `json:"agent_token_env,omitempty"`
 	WorkRoot      string `json:"work_root,omitempty"`
+	GlobalRoot    string `json:"global_root,omitempty"`
 	ShellUser     string `json:"shell_user,omitempty"`
 	MaxOutput     int    `json:"max_output_bytes,omitempty"`
 }
@@ -111,6 +112,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Sandbox.WorkRoot == "" {
 		cfg.Sandbox.WorkRoot = filepath.Join(cfg.DataDir, "workspaces")
+	}
+	if cfg.Sandbox.GlobalRoot == "" {
+		cfg.Sandbox.GlobalRoot = filepath.Join(cfg.DataDir, "global")
 	}
 	if cfg.Sandbox.ShellUser == "" {
 		cfg.Sandbox.ShellUser = "minis"
