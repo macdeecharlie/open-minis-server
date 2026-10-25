@@ -317,12 +317,6 @@ func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, st
 	var runErr error
 	for ev := range run.events {
 		switch ev.Name {
-		case "text":
-			if m, ok := ev.Data.(map[string]any); ok {
-				if s, ok := m["text"].(string); ok {
-					finalText.WriteString(s)
-				}
-			}
 		case "assistant_end":
 			if m, ok := ev.Data.(map[string]any); ok {
 				if parts, ok := m["parts"].([]WirePart); ok {
