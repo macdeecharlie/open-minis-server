@@ -24,11 +24,12 @@ type Run struct {
 	smu    sync.Mutex
 	steers []WireMessage
 
-	logMu sync.Mutex
-	log   []Event
-	base  int // sequence number of log[0]; starts at 1
-	done  bool
-	wake  chan struct{}
+	logMu  sync.Mutex
+	log    []Event
+	base   int // sequence number of log[0]; starts at 1
+	done   bool
+	wake   chan struct{}
+	doneCh chan struct{}
 }
 
 func newRun(parent context.Context, id string) *Run {
@@ -39,6 +40,7 @@ func newRun(parent context.Context, id string) *Run {
 		cancel:  cancel,
 		pending: map[string]chan ToolResult{},
 		wake:    make(chan struct{}, 1),
+		doneCh:  make(chan struct{}),
 		base:    1,
 	}
 }
@@ -104,12 +106,22 @@ func (r *Run) close() {
 		return
 	}
 	r.done = true
+	close(r.doneCh)
 	r.logMu.Unlock()
 	select {
 	case r.wake <- struct{}{}:
 	default:
 	}
 	r.cancel()
+}
+
+func (r *Run) waitDone(timeout time.Duration) bool {
+	select {
+	case <-r.doneCh:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 func (r *Run) finished() bool {
