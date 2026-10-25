@@ -150,6 +150,23 @@ func (s *Server) providerFor(p *Provider) ProviderClient {
 	}
 }
 
+// offloadToolResult spills an oversized tool result into the session's
+// offloads directory and replaces it with a short pointer, matching the
+// Android agent's context offload so one large output cannot consume the
+// model window.
+func offloadToolResult(sb ToolSandbox, res *ToolResult) {
+	const threshold = 40 * 1024
+	if res == nil || res.IsError || len(res.Content) <= threshold {
+		return
+	}
+	name := "tool_" + strings.NewReplacer("/", "_", ":", "_").Replace(res.ID) + ".txt"
+	path := "/var/minis/offloads/" + name
+	if err := sb.WriteFile(path, res.Content, false, true); err != nil {
+		return
+	}
+	res.Content = fmt.Sprintf("[Large tool result saved to %s (%d bytes). Use file_read to inspect it.]", path, len(res.Content))
+}
+
 func (s *Server) runAgent(req RunRequest, run *Run) {
 	defer run.close()
 
@@ -259,9 +276,24 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 
 	startingAttempt := 0
 	emptyNudges := 0
+	inLoopCompactions := 0
+	lastToolSignature := ""
+	repeatedToolCalls := 0
 	for turn := 0; turn < maxTurns; turn++ {
 		if run.ctx.Err() != nil {
 			return
+		}
+		compactProvider := attempts[startingAttempt]
+		compactedMessages, didCompact, cerr := s.maybeCompact(
+			run, messages, system, tools, compactProvider.model.ContextWindow,
+			compactProvider.client, compactProvider.model, maxTokens, &inLoopCompactions,
+		)
+		if cerr != nil {
+			run.emit("error", map[string]any{"message": cerr.Error()})
+			return
+		}
+		if didCompact {
+			messages = compactedMessages
 		}
 		parts := []*WirePart{}
 		var textBuilder strings.Builder
@@ -469,6 +501,26 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			}
 		}
 		hasTool = len(orderedIDs) > 0
+		if len(orderedIDs) == 1 {
+			call := calls[orderedIDs[0]]
+			sig := call.part.Name + "|" + string(call.part.Args)
+			if sig == lastToolSignature {
+				repeatedToolCalls++
+			} else {
+				lastToolSignature = sig
+				repeatedToolCalls = 0
+			}
+			if repeatedToolCalls == 2 {
+				run.emit("info", map[string]any{"text": "The model is repeating the same tool call (" + call.part.Name + "). It will be stopped if the loop continues."})
+			}
+			if repeatedToolCalls >= 4 {
+				run.emit("error", map[string]any{"message": "tool loop detected: " + call.part.Name + " was called with identical arguments five times"})
+				return
+			}
+		} else {
+			lastToolSignature = ""
+			repeatedToolCalls = 0
+		}
 		stop := pres.StopReason
 		if hasTool {
 			stop = "tool_use"
@@ -525,6 +577,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				})
 				res.ID = id
 				res.Executor = "server"
+				offloadToolResult(sb, &res)
 				run.emit("tool_result", res)
 				results = append(results, res)
 				continue
@@ -562,6 +615,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			}
 			res.ID = id
 			res.Executor = "client"
+			offloadToolResult(sb, &res)
 			run.emit("tool_result", res)
 			results = append(results, res)
 		}

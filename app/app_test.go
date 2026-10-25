@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -816,5 +817,124 @@ func TestDeviceCLIRouting(t *testing.T) {
 		if !clientOwnedCall("file_read", json.RawMessage(`{"path":"`+path+`"}`)) {
 			t.Fatalf("device path %s was not routed to the client", path)
 		}
+	}
+}
+
+type stubProvider struct {
+	reply string
+	calls int
+}
+
+func (s *stubProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
+	s.calls++
+	if s.reply != "" {
+		if err := emit(ProviderEvent{Kind: "text", Text: s.reply}); err != nil {
+			return ProviderResult{}, err
+		}
+	}
+	return ProviderResult{StopReason: "end_turn"}, nil
+}
+
+func TestContextEstimatorWeights(t *testing.T) {
+	ascii := estimateTextTokens(strings.Repeat("hello world ", 100))
+	cjk := estimateTextTokens(strings.Repeat("你好世界", 300))
+	if ascii <= 0 || cjk <= 0 {
+		t.Fatalf("estimates ascii=%d cjk=%d", ascii, cjk)
+	}
+	// 4 CJK characters are roughly one token each, far denser than English.
+	if cjk < 1000 {
+		t.Fatalf("CJK estimate too small: %d", cjk)
+	}
+	if estimateTextTokens("") != 0 {
+		t.Fatal("empty text should be zero tokens")
+	}
+}
+
+func TestCompactionKeepsToolPairing(t *testing.T) {
+	messages := []WireMessage{
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "old user turn"}}},
+		{Role: "assistant", Parts: []WirePart{
+			{Type: "text", Text: "running"},
+			{Type: "tool_use", ID: "call_1", Name: "shell_execute", Args: json.RawMessage(`{"command":"ls"}`)},
+		}},
+		{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: "call_1", Name: "shell_execute", Content: "a\nb"}}},
+		{Role: "assistant", Parts: []WirePart{{Type: "text", Text: "done"}}},
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "keep me"}}},
+		{Role: "assistant", Parts: []WirePart{{Type: "text", Text: "recent"}}},
+		{Role: "user", Parts: []WirePart{{Type: "text", Text: "latest"}}},
+	}
+	split := splitForCompaction(messages, 1)
+	if split != 6 {
+		t.Fatalf("split = %d, want 6 (keep latest user turn)", split)
+	}
+	out := applyCompaction(messages, split, "earlier work")
+	if len(out) != 1 || out[0].Role != "user" || len(out[0].Parts) != 2 {
+		t.Fatalf("compacted = %+v", out)
+	}
+	if !strings.Contains(out[0].Parts[0].Text, "<context-summary>") || !strings.Contains(out[0].Parts[1].Text, "latest") {
+		t.Fatalf("compacted parts = %+v", out[0].Parts)
+	}
+}
+
+func TestMaybeCompactSummarizesOldTurns(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	big := strings.Repeat("detail ", 3000)
+	var messages []WireMessage
+	for i := 0; i < 24; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		messages = append(messages, WireMessage{Role: role, Parts: []WirePart{{Type: "text", Text: big + fmt.Sprintf(" turn=%d", i)}}})
+	}
+	run := newRun(context.Background(), "run_compact")
+	defer run.close()
+	stub := &stubProvider{reply: "The user investigated a large dataset."}
+	compactions := 0
+	out, changed, err := s.maybeCompact(run, messages, "system", nil, 64_000, stub, &Model{ID: "mock-1"}, 0, &compactions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || compactions != 1 {
+		t.Fatalf("changed=%v compactions=%d", changed, compactions)
+	}
+	if len(out) >= len(messages) {
+		t.Fatalf("compaction did not shrink history: %d -> %d", len(messages), len(out))
+	}
+	found := false
+	for _, m := range out {
+		for _, p := range m.Parts {
+			if strings.Contains(p.Text, "<context-summary>") && strings.Contains(p.Text, "large dataset") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("compacted history does not carry the summary")
+	}
+	if stub.calls != 1 {
+		t.Fatalf("summary calls = %d", stub.calls)
+	}
+}
+
+func TestToolResultOffload(t *testing.T) {
+	root := t.TempDir()
+	sb, err := NewSandbox(SandboxConfig{WorkRoot: root, MaxOutput: 1_000_000}, "sess-offload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := ToolResult{ID: "call_1", Name: "shell_execute", Content: strings.Repeat("x", 50*1024)}
+	offloadToolResult(sb, &res)
+	if !strings.Contains(res.Content, "/var/minis/offloads/tool_call_1.txt") {
+		t.Fatalf("stub = %q", res.Content)
+	}
+	content, err := sb.ReadFile("/var/minis/offloads/tool_call_1.txt", 1, 0, 1_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(content) < 50*1024 {
+		t.Fatalf("offloaded content = %d bytes", len(content))
 	}
 }
