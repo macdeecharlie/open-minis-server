@@ -441,6 +441,13 @@ func (s *Server) handleSessionMeta(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	s.runsMu.Lock()
+	for _, run := range s.runs {
+		if run.Session == id {
+			run.cancel()
+		}
+	}
+	s.runsMu.Unlock()
 	if err := s.store.DeleteSession(id); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
