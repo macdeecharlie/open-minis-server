@@ -28,7 +28,7 @@ resources, generated schemas, and the bundled runtime assets.
 | Area | Owner | Status | Notes |
 |---|---|---|---|
 | `server/` | server bridge | implemented | SSE run protocol, tool result bridge, bootstrap, updater feed. |
-| `sandbox/` main + `assets/proot*` | server container | implemented / replaced | Agent shell and file tools now execute in the dedicated **Debian 12** container. PRoot remains only for device-local file/skill bridges and local fallback. |
+| `sandbox/` main + `assets/proot*` | server container | implemented / replaced | Agent shell and file tools execute in the dedicated **Debian 12** container. A server file-browsing API (`/v1/files/list|raw|upload`) is live. PRoot remains only for device-local file/skill bridges and local fallback. |
 | `sandbox/offload/*` | mixed | partial | `minis-model-use`, `minis-sessions-cli`, `minis-scheduled`, `minis-config` need server-side equivalents; `android-*` CLIs stay on the phone. |
 | `provider/` | server | partial | OpenAI-compatible + Anthropic streams exist server-side. Native Gemini, OAuth custody, model catalogs, thinking rules, image budget parity, and all provider-specific edge cases are pending. |
 | `agent/` | server | partial | Basic tool loop and client bridge exist. Subagent orchestration, loop detection, SOUL/prompt builder, user-ask recovery, helper budgets and plan/steer are still in the app. |
@@ -71,10 +71,10 @@ resources, generated schemas, and the bundled runtime assets.
 4. **Scheduled tasks on the server.** Task persistence, interval/daily/custom
    scheduling, target sessions, prefills, completion triggers, run history,
    and app sync/notification delivery.
-5. **Remote GUI surfaces.** Server filesystem API for file browser/preview,
-   `@file` mentions, attachments/uploads, and a remote PTY for the terminal.
-   Chat tool cards already show server output, but local file screens still
-   open PRoot paths.
+5. **Remote GUI surfaces.** File browser/preview and `@file` mentions still
+   use local PRoot paths even though the server filesystem API exists. Add the
+   remote file browser/preview adapter and a remote PTY for the terminal.
+   Chat tool cards already show server output.
 6. **Skills, memory and MCP data.** Server-side skill/memory stores and
    on-demand MCP tooling; attachments and device-local files must be uploaded
    or bridged deliberately.
@@ -88,6 +88,8 @@ resources, generated schemas, and the bundled runtime assets.
 
 - Dedicated Debian 12 full-distro container with root shell, apt, Node, Python
   and common build tools; isolated from host/other Docker networks.
+- Server file API verified end-to-end through the sandbox container:
+  list, upload, raw download, and persisted workspace.
 - Server-side shell/file tools execute in that container via an authenticated
   private API.
 - Real OpenRouter model run with server shell tool returned Debian
