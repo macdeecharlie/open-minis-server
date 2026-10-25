@@ -186,6 +186,7 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - Auxiliary `/v1/chat/completions` translation verified against a native
   Anthropic SSE upstream (streaming and non-streaming).
 - Request image budget and compaction/offload unit-tested.
-- Published: 1.16.11 build 49 (same stable signing key); 1.16.10 build 48
-  fixed the helper prompt, 1.16.9 build 47 added audio/offload sync. Source:
-  1.16.12 build 50 (persisted tool-result images) in CI at this snapshot.
+- Published: 1.16.12 build 50 (same stable signing key). 1.16.10 fixed the
+  helper prompt, 1.16.9 added audio/offload sync, 1.16.11 added image tool
+  results/signatures/title-compaction parity, and 1.16.12 persists tool-result
+  images in the local transcript.
