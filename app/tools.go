@@ -63,7 +63,14 @@ func (s *Server) buildTools(client []ToolDef) []ToolDef {
 	// and the server pauses for the client's result when the model calls it.
 	for _, t := range client {
 		name := t.Function.Name
-		if name == "" || seen[name] || !serverToolNames[name] {
+		if name == "" || seen[name] {
+			continue
+		}
+		// Already-added server tools keep the definition selected above.
+		// Everything else is a client-executed tool and must be offered to the
+		// model; dropping it here silently hid browser, memory, sub-agent and
+		// device tools from every server run.
+		if serverToolNames[name] {
 			continue
 		}
 		out = append(out, t)

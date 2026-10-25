@@ -379,3 +379,23 @@ func TestSandboxRejectsSymlinkEscape(t *testing.T) {
 		t.Fatal("symlink to /etc/passwd was accepted")
 	}
 }
+
+func TestBuildToolsIncludesClientTools(t *testing.T) {
+	s := &Server{cfg: &Config{}}
+	defs := []ToolDef{
+		{Type: "function", Function: ToolFunction{Name: "shell_execute", Description: "server", Parameters: []byte(`{"type":"object"}`)}},
+		{Type: "function", Function: ToolFunction{Name: "browser_use", Description: "client", Parameters: []byte(`{"type":"object"}`)}},
+		{Type: "function", Function: ToolFunction{Name: "device_ping", Description: "client", Parameters: []byte(`{"type":"object"}`)}},
+	}
+	out := s.buildTools(defs)
+	byName := map[string]string{}
+	for _, d := range out {
+		byName[d.Function.Name] = d.Function.Description
+	}
+	if byName["browser_use"] != "client" || byName["device_ping"] != "client" {
+		t.Fatalf("client tools missing: %+v", byName)
+	}
+	if byName["shell_execute"] != "server" {
+		t.Fatalf("server tool definition not preserved: %+v", byName)
+	}
+}
