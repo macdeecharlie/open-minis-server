@@ -1699,3 +1699,14 @@ func TestAudioInputMapping(t *testing.T) {
 		t.Fatal("Anthropic audio should fail visibly")
 	}
 }
+
+func TestMinisURL(t *testing.T) {
+	got := minisURL("/var/minis/workspace/报告 1.md")
+	want := "minis://workspace/%E6%8A%A5%E5%91%8A%201.md"
+	if got != want {
+		t.Fatalf("minisURL = %q, want %q", got, want)
+	}
+	if minisURL("/tmp/x") != "" {
+		t.Fatal("non-virtual path produced a minis URL")
+	}
+}

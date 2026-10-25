@@ -314,6 +314,9 @@ func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, r
 			return res
 		}
 		res.Content = content
+		if u := minisURL(p); u != "" {
+			res.Content += "\n\nminis_url: " + u
+		}
 	case "file_write":
 		p, content := str("path"), str("content")
 		if p == "" {
@@ -329,6 +332,9 @@ func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, r
 			return res
 		}
 		res.Content = fmt.Sprintf("Wrote %d bytes to %s", len(content), p)
+		if u := minisURL(p); u != "" {
+			res.Content += "\nminis_url: " + u
+		}
 	case "file_edit":
 		p, oldS, newS := str("path"), str("old_string"), str("new_string")
 		if p == "" {
@@ -345,6 +351,9 @@ func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, r
 			return res
 		}
 		res.Content = fmt.Sprintf("Replaced %d occurrence(s) in %s", n, p)
+		if u := minisURL(p); u != "" {
+			res.Content += "\nminis_url: " + u
+		}
 	case "web_fetch":
 		u := str("url")
 		if u == "" {
@@ -703,4 +712,31 @@ func stripShellWrappers(words []string) []string {
 func isEnvAssignment(w string) bool {
 	i := strings.IndexByte(w, '=')
 	return i > 0 && !strings.ContainsAny(w[:i], "/$`()[]{}")
+}
+
+// minisURL maps a virtual workspace path to the app's minis:// scheme,
+// percent-encoding each segment. Tool results include it so the model can
+// embed a tappable link without hand-encoding non-ASCII names.
+func minisURL(p string) string {
+	prefixes := []struct{ from, to string }{
+		{"/var/minis/workspace/", "workspace/"},
+		{"/var/minis/attachments/", "attachments/"},
+		{"/var/minis/offloads/", "offloads/"},
+		{"/var/minis/browser/", "browser/"},
+		{"/var/minis/shared/", "shared/"},
+		{"/var/minis/skills/", "skills/"},
+		{"/var/minis/memory/", "memory/"},
+	}
+	for _, pfx := range prefixes {
+		if !strings.HasPrefix(p, pfx.from) {
+			continue
+		}
+		rest := strings.TrimPrefix(p, pfx.from)
+		segs := strings.Split(rest, "/")
+		for i, seg := range segs {
+			segs[i] = url.PathEscape(seg)
+		}
+		return "minis://" + pfx.to + strings.Join(segs, "/")
+	}
+	return ""
 }
