@@ -17,10 +17,13 @@ services:
     volumes:
       - ../data:/data
     networks:
-      - internal
+      - minis_net
     expose:
       - "8080"
 
 networks:
-  internal:
+  # A dedicated network for the server and Caddy only. The server's shell
+  # tools must not be able to reach the other containers on the `internal`
+  # network. Caddy is attached to both networks.
+  minis_net:
     external: true
