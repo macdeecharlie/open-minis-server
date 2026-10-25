@@ -84,6 +84,15 @@ only `internal`. A prompt-injected shell cannot reach the VPS's other Docker
 networks or host listeners. It can reach the server on `:8080` for the
 `minis-*` CLI endpoints, which are scoped to the sandbox token.
 
+Each shell command and PTY runs under `unshare -m` with
+`/usr/local/bin/minis-session-exec`, which binds the session's real
+`workspace`, `attachments`, `offloads` and `browser` directories at the
+virtual `/var/minis/...` paths. That makes internal file opens from Python,
+Node, MCP servers and user scripts behave exactly like the official PRoot
+layout instead of relying on command-string rewriting. The sandbox has
+`SYS_ADMIN` + unconfined AppArmor for this, but no host mounts, devices or
+Docker socket; the capability is container-local.
+
 Device-local paths (`attachments`, `skills`, `memory`, `shared`, `mounts`,
 `browser`) and commands invoking `android-*`, `minis-open`, `minis-scheduled`
 or `minis-mcp-cli` are routed to the paired app. The app executes them in its

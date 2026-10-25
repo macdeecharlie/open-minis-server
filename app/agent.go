@@ -324,11 +324,15 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	maxTokens := req.MaxTokens
 
 	tools := s.buildTools(req.Tools)
+	workspaceForPrompt := sb.Workspace()
+	if s.cfg.Sandbox.MountNamespace {
+		workspaceForPrompt = "/var/minis/workspace"
+	}
 	system := ""
 	switch {
 	case req.Prompt != nil:
 		// The client sends structured state; the server owns prompt wording.
-		system = buildSystemPrompt(req.Prompt, sb.Workspace())
+		system = buildSystemPrompt(req.Prompt, workspaceForPrompt)
 	case strings.TrimSpace(req.System) != "":
 		// Legacy clients still send a complete prompt. Keep it byte-for-byte
 		// and only add the deployment note so the model knows the execution
@@ -342,7 +346,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	default:
 		// Headless runs (scheduled tasks) and bare API clients get the same
 		// server-owned prompt with no session-specific fragments.
-		system = buildSystemPrompt(nil, sb.Workspace())
+		system = buildSystemPrompt(nil, workspaceForPrompt)
 	}
 
 	// Store the user's new prompt exactly once. History is client-owned, so

@@ -200,6 +200,11 @@ curl -X POST https://minis.example.com/v1/admin/update-token \
 - The sandbox can reach the server on `:8080` for the `minis-*` CLI tools. That
   token is already readable by the sandbox root shell and only opens the
   `/v1/cli/*` and sandbox tool APIs, not the app's `/v1/agent` surface.
+- The sandbox runs with `SYS_ADMIN` and unconfined AppArmor so each command can
+  create a private mount namespace and bind the session's real directories at
+  `/var/minis/...`. It has no host filesystem mounts, no Docker socket and no
+  model/update/app credentials. The capability is container-local; it is what
+  lets unmodified scripts resolve the same paths as the official app.
 - `web_fetch` refuses loopback, private, link-local and unspecified addresses,
   and re-checks every redirect.
 - The agent container is isolated from the VPS's other Docker networks and
