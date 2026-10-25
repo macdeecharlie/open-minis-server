@@ -92,16 +92,23 @@ data: {"text":"Hello"}
 | `tool_running` | `id`, `name` (server tool started) |
 | `tool_output` | `id`, `line` (live shell output) |
 | `await_client` | `id`, `name` (device tool waiting for the app) |
-| `tool_result` | `id`, `name`, `content`, `is_error`, `title`, `duration_ms`, `executor` |
+| `tool_result` | `id`, `name`, `content`, `is_error`, `title`, `duration_ms`, `executor`, `image` (base64), `image_mime`, `image_path` |
 | `assistant_end` | `parts`, `stop_reason`, `usage`, `reasoning_content` |
 | `tools_end` | `results` |
 | `usage` | token usage object |
 | `compacted` | `summary`, `messages`, `tokens`, `window`, `compaction` |
 | `steered` | `client_id`, `text` |
+| `steered` | `client_id`, `text` |
 | `info` | `text` (visible notice: fallback, truncated images, loop warning) |
 | `truncated` | `skipped` (only if a replay window was exceeded) |
 | `done` | `stop_reason`, `turns` |
 | `error` | `message` |
+
+Image-bearing tool results (browser screenshots, `read_image`) are carried as
+base64 `image` + `image_mime`; the client persists them on the matching
+`AgentContentPart.ToolResult`. OpenAI-compatible providers receive them as a
+following user image carrier, Anthropic inside the `tool_result` block, and
+Gemini as `inlineData`.
 
 ## Reconnect and replay
 
