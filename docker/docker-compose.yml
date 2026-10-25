@@ -6,6 +6,8 @@ services:
     image: open-minis-server:latest
     container_name: open-minis-server
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       APP_GIT_REPO: https://github.com/macdeecharlie/open-minis-server.git
       APP_GIT_BRANCH: main
@@ -14,7 +16,7 @@ services:
       # Full-distro execution environment (not the server container).
       MINIS_SANDBOX_MODE: agent
       MINIS_SANDBOX_AGENT_URL: http://minis-sandbox:8090
-      MINIS_SANDBOX_TOKEN: ${MINIS_SANDBOX_TOKEN:?set MINIS_SANDBOX_TOKEN in ../.env}
+      # MINIS_SANDBOX_TOKEN is supplied by ../.env through env_file.
       # Optional: read-only token for the private Android release repo. Set it
       # in ../.env (never in this file) and restart the container.
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -33,11 +35,12 @@ services:
     image: open-minis-sandbox:latest
     container_name: minis-sandbox
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       MINIS_ROLE: sandbox
       MINIS_SANDBOX_LISTEN: ":8090"
       MINIS_SANDBOX_WORK_ROOT: /workspace/sessions
-      MINIS_SANDBOX_TOKEN: ${MINIS_SANDBOX_TOKEN:?set MINIS_SANDBOX_TOKEN in ../.env}
       MINIS_SANDBOX_MAX_OUTPUT: "204800"
     volumes:
       - ../data/sandbox:/workspace/sessions
