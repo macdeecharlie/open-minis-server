@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -25,12 +27,23 @@ import (
 // ToolSandbox is the execution boundary used by the agent loop. It is
 // implemented by the in-process workspace (local mode) and by the dedicated
 // full-Linux sandbox container client (agent mode).
+type FileEntry struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	IsDir    bool   `json:"is_dir"`
+	Size     int64  `json:"size"`
+	Modified int64  `json:"modified"`
+}
+
 type ToolSandbox interface {
 	Workspace() string
 	RunShell(ctx context.Context, command string, timeout time.Duration, delay time.Duration, emit func(string)) (ShellResult, error)
 	ReadFile(p string, offset int, lines int, maxLength int) (string, error)
 	WriteFile(p, content string, appendMode bool, createDirs bool) error
 	EditFile(p, oldString, newString string, replaceAll bool) (int, error)
+	ListDir(p string) ([]FileEntry, error)
+	ReadRaw(p string) ([]byte, string, error)
+	Upload(p string, data []byte) error
 }
 
 type Sandbox struct {
@@ -487,6 +500,75 @@ func (s *Sandbox) EditFile(p, oldString, newString string, replaceAll bool) (int
 	}
 	s.own(path)
 	return replaced, nil
+}
+
+func (s *Sandbox) ListDir(p string) ([]FileEntry, error) {
+	path, err := s.virtualPath(p)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]FileEntry, 0, len(entries))
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		out = append(out, FileEntry{
+			Name:     e.Name(),
+			Path:     filepath.Join(p, e.Name()),
+			IsDir:    e.IsDir(),
+			Size:     info.Size(),
+			Modified: info.ModTime().UnixMilli(),
+		})
+	}
+	return out, nil
+}
+
+func (s *Sandbox) ReadRaw(p string) ([]byte, string, error) {
+	path, err := s.virtualPath(p)
+	if err != nil {
+		return nil, "", err
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil, "", err
+	}
+	if st.IsDir() {
+		return nil, "", fmt.Errorf("path is a directory: %s", p)
+	}
+	if st.Size() > 64*1024*1024 {
+		return nil, "", fmt.Errorf("file is larger than the 64 MB preview limit")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+	contentType := "application/octet-stream"
+	if byExt := mime.TypeByExtension(filepath.Ext(path)); byExt != "" {
+		contentType = byExt
+	} else if detected := http.DetectContentType(b); detected != "" {
+		contentType = detected
+	}
+	return b, contentType, nil
+}
+
+func (s *Sandbox) Upload(p string, data []byte) error {
+	path, err := s.virtualPath(p)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+	s.own(path)
+	return nil
 }
 
 func (s *Sandbox) Validate() error {

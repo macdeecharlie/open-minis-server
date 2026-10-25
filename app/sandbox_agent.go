@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -67,6 +68,9 @@ func (a *sandboxAgent) handler() http.Handler {
 	mux.Handle("POST /v1/files/read", a.auth(http.HandlerFunc(a.readFile)))
 	mux.Handle("POST /v1/files/write", a.auth(http.HandlerFunc(a.writeFile)))
 	mux.Handle("POST /v1/files/edit", a.auth(http.HandlerFunc(a.editFile)))
+	mux.Handle("POST /v1/files/list", a.auth(http.HandlerFunc(a.listDir)))
+	mux.Handle("POST /v1/files/raw", a.auth(http.HandlerFunc(a.rawFile)))
+	mux.Handle("POST /v1/files/upload", a.auth(http.HandlerFunc(a.uploadFile)))
 	return mux
 }
 
@@ -291,6 +295,78 @@ func (a *sandboxAgent) writeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *sandboxAgent) listDir(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		sandboxRequest
+		Path string `json:"path"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024))
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	sb, err := a.sandboxFor(req.sandboxRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	entries, err := sb.ListDir(req.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+func (a *sandboxAgent) rawFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		sandboxRequest
+		Path string `json:"path"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024))
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	sb, err := a.sandboxFor(req.sandboxRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	data, contentType, err := sb.ReadRaw(req.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (a *sandboxAgent) uploadFile(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	path := r.URL.Query().Get("path")
+	sb, err := a.sandboxFor(sandboxRequest{SessionID: sessionID})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64*1024*1024))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read upload: "+err.Error())
+		return
+	}
+	if err := sb.Upload(path, data); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "bytes": len(data)})
 }
 
 func (a *sandboxAgent) editFile(w http.ResponseWriter, r *http.Request) {

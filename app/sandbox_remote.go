@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -186,6 +187,76 @@ func (r *remoteSandbox) WriteFile(p, content string, appendMode bool, createDirs
 	return r.postJSON(ctx, "/v1/files/write", map[string]any{
 		"session_id": r.session, "path": p, "content": content, "append": appendMode, "create_dirs": createDirs,
 	}, nil)
+}
+
+func (r *remoteSandbox) ListDir(p string) ([]FileEntry, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	var out struct {
+		Entries []FileEntry `json:"entries"`
+	}
+	err := r.postJSON(ctx, "/v1/files/list", map[string]any{
+		"session_id": r.session, "path": p,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return out.Entries, nil
+}
+
+func (r *remoteSandbox) ReadRaw(p string) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	body := map[string]any{"session_id": r.session, "path": p}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.baseURL+"/v1/files/raw", bytes.NewReader(raw))
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+r.token)
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+		return nil, "", fmt.Errorf("sandbox HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024*1024))
+	if err != nil {
+		return nil, "", err
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+func (r *remoteSandbox) Upload(p string, data []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	q := url.Values{}
+	q.Set("session_id", r.session)
+	q.Set("path", p)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.baseURL+"/v1/files/upload?"+q.Encode(), bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Authorization", "Bearer "+r.token)
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+		return fmt.Errorf("sandbox HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }
 
 func (r *remoteSandbox) EditFile(p, oldString, newString string, replaceAll bool) (int, error) {

@@ -473,6 +473,30 @@ func TestRemoteSandboxRoundTrip(t *testing.T) {
 	if !strings.Contains(got, "two") {
 		t.Fatalf("read after edit = %q", got)
 	}
+	entries, err := sb.ListDir("/var/minis/workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Name == "a.txt" && !e.IsDir {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("ListDir missing a.txt: %+v", entries)
+	}
+	raw, _, err := sb.ReadRaw("/var/minis/workspace/a.txt")
+	if err != nil || !strings.Contains(string(raw), "two") {
+		t.Fatalf("ReadRaw = %q err=%v", raw, err)
+	}
+	if err := sb.Upload("/var/minis/workspace/b.bin", []byte{0, 1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err = sb.ReadRaw("/var/minis/workspace/b.bin")
+	if err != nil || len(raw) != 4 {
+		t.Fatalf("uploaded raw = %v err=%v", raw, err)
+	}
 
 	bad, err := NewRemoteSandbox(SandboxConfig{
 		Mode: "agent", AgentURL: ts.URL, AgentToken: "wrong",
