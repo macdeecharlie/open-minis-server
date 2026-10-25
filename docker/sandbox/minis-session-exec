@@ -19,5 +19,9 @@ mount --bind "$MINIS_SESSION_ROOT/attachments" /var/minis/attachments
 mount --bind "$MINIS_SESSION_ROOT/offloads" /var/minis/offloads
 mount --bind "$MINIS_SESSION_ROOT/browser" /var/minis/browser
 mount --bind /workspace/global/mcp-servers /var/minis/mcp-servers
+# Match the old virtual root: /workspace is this session's workspace, not the
+# container's sessions/global tree. Bind it after the MCP source has been
+# resolved so /var/minis/mcp-servers still points at the shared config.
+mount --bind "$MINIS_SESSION_ROOT/workspace" /workspace
 cd /var/minis/workspace
 exec "$@"
