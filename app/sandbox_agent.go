@@ -57,7 +57,7 @@ func runSandboxAgent() {
 		log.Fatalf("create sandbox work root: %v", err)
 	}
 	agent := &sandboxAgent{token: token, workRoot: workRoot, globalRoot: globalRoot,
-		mountNS: mountNS, maxOutput: maxOutput, terminals: newTerminalManager(mountNS)}
+		mountNS: mountNS, maxOutput: maxOutput, terminals: newTerminalManager(mountNS, workRoot)}
 	listen := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_LISTEN"))
 	if listen == "" {
 		listen = ":8090"

@@ -26,13 +26,14 @@ type terminal struct {
 }
 
 type terminalManager struct {
-	mu      sync.Mutex
-	terms   map[string]*terminal
-	mountNS bool
+	mu       sync.Mutex
+	terms    map[string]*terminal
+	mountNS  bool
+	workRoot string
 }
 
-func newTerminalManager(mountNS bool) *terminalManager {
-	return &terminalManager{terms: map[string]*terminal{}, mountNS: mountNS}
+func newTerminalManager(mountNS bool, workRoot string) *terminalManager {
+	return &terminalManager{terms: map[string]*terminal{}, mountNS: mountNS, workRoot: workRoot}
 }
 
 func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, error) {
@@ -45,9 +46,14 @@ func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, er
 	if rows <= 0 {
 		rows = 30
 	}
+	root := m.workRoot
+	if root == "" {
+		root = envOr("MINIS_SANDBOX_WORK_ROOT", "/workspace/sessions")
+	}
 	sb, err := NewSandbox(SandboxConfig{
-		WorkRoot:  envOr("MINIS_SANDBOX_WORK_ROOT", "/workspace/sessions"),
-		MaxOutput: 0,
+		WorkRoot:       root,
+		MountNamespace: m.mountNS,
+		MaxOutput:      0,
 	}, sessionID)
 	if err != nil {
 		return nil, err

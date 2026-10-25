@@ -550,7 +550,7 @@ func TestSandboxAgentHealth(t *testing.T) {
 func TestSandboxTerminalPTY(t *testing.T) {
 	agent := &sandboxAgent{
 		token: "t", workRoot: t.TempDir(), maxOutput: 10000,
-		terminals: newTerminalManager(false),
+		terminals: newTerminalManager(false, t.TempDir()),
 	}
 	ts := httptest.NewServer(agent.handler())
 	defer ts.Close()
@@ -1191,7 +1191,7 @@ func TestSandboxFileOperations(t *testing.T) {
 }
 
 func TestRemoteSandboxFileOperations(t *testing.T) {
-	agent := &sandboxAgent{token: "t", workRoot: t.TempDir(), maxOutput: 1_000_000, terminals: newTerminalManager(false)}
+	agent := &sandboxAgent{token: "t", workRoot: t.TempDir(), maxOutput: 1_000_000, terminals: newTerminalManager(false, t.TempDir())}
 	ts := httptest.NewServer(agent.handler())
 	defer ts.Close()
 	sb, err := NewRemoteSandbox(SandboxConfig{Mode: "agent", AgentURL: ts.URL, AgentToken: "t"}, "sess-remote-ops")
