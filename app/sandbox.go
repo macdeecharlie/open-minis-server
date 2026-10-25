@@ -329,23 +329,16 @@ func (s *Sandbox) RunShell(ctx context.Context, command string, timeout time.Dur
 			emit("… output truncated by server …")
 		}
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return ShellResult{}, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return ShellResult{}, err
-	}
+	// Let os/exec own the pipe copying. Calling Wait before a manual reader
+	// has drained StdoutPipe is a documented race (Wait closes the pipes),
+	// which intermittently produced an empty result for a command that had
+	// printed output.
+	cmd.Stdout = sink
+	cmd.Stderr = sink
 	if err := cmd.Start(); err != nil {
 		return ShellResult{}, err
 	}
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); _, _ = io.Copy(sink, stdout) }()
-	go func() { defer wg.Done(); _, _ = io.Copy(sink, stderr) }()
-	err = cmd.Wait()
-	wg.Wait()
+	_ = cmd.Wait()
 	sink.flush()
 
 	res := ShellResult{Output: output.String()}

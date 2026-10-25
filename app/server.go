@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -93,6 +92,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/cli/scheduled/{id}/run", s.cliAuth(http.HandlerFunc(s.handleScheduledRun)))
 	mux.Handle("POST /v1/agent/runs/{id}/tool_result", s.auth(http.HandlerFunc(s.handleToolResult)))
 	mux.Handle("POST /v1/agent/runs/{id}/cancel", s.auth(http.HandlerFunc(s.handleCancelRun)))
+	mux.Handle("GET /v1/agent/runs/{id}/events", s.auth(http.HandlerFunc(s.handleRunEvents)))
+	mux.Handle("POST /v1/agent/runs/{id}/steer", s.auth(http.HandlerFunc(s.handleSteerRun)))
 	mux.Handle("GET /v1/sessions", s.auth(http.HandlerFunc(s.handleListSessions)))
 	mux.Handle("GET /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleGetSession)))
 	mux.Handle("DELETE /v1/sessions/{id}", s.auth(http.HandlerFunc(s.handleDeleteSession)))
@@ -236,10 +237,33 @@ func (s *Server) handleAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	run := newRun(context.Background(), req.RunID)
+	s.registerRun(run)
+	go func() {
+		s.runAgent(req, run)
+		s.unregisterRun(run)
+	}()
+	s.streamRun(w, r, run, 0)
+}
+
+// streamRun attaches an HTTP response to a run's event log. Disconnecting does
+// not cancel the run; the app can reconnect with `after` (or Last-Event-ID)
+// and continue from the exact event it missed.
+func (s *Server) streamRun(w http.ResponseWriter, r *http.Request, run *Run, after int) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming is not supported by this HTTP stack")
 		return
+	}
+	if v := r.URL.Query().Get("after"); v != "" {
+		if n, err := parseInt(v); err == nil && n > 0 {
+			after = n
+		}
+	}
+	if v := r.Header.Get("Last-Event-ID"); v != "" {
+		if n, err := parseInt(v); err == nil && n > after {
+			after = n
+		}
 	}
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
@@ -247,38 +271,54 @@ func (s *Server) handleAgentRun(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	run := newRun(ctx, req.RunID)
-	s.registerRun(run)
-	defer s.unregisterRun(run)
-	go s.runAgent(req, run)
-
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-	for {
-		select {
-		case ev, ok := <-run.events:
-			if !ok {
-				return
-			}
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	done := make(chan struct{})
+	var writeMu sync.Mutex
+	write := func(format string, args ...any) bool {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		if _, err := fmt.Fprintf(w, format, args...); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	go func() {
+		defer close(done)
+		run.subscribe(ctx, after, func(seq int, ev Event) bool {
 			data, err := json.Marshal(ev.Data)
 			if err != nil {
 				data = []byte(`{"error":"unable to encode event"}`)
 			}
-			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Name, data); err != nil {
-				return
-			}
-			flusher.Flush()
+			return write("id: %d\nevent: %s\ndata: %s\n\n", seq, ev.Name, data)
+		})
+	}()
+	for {
+		select {
+		case <-done:
+			return
 		case <-ticker.C:
-			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+			if !write(": ping\n\n") {
 				return
 			}
-			flusher.Flush()
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func (s *Server) handleRunEvents(w http.ResponseWriter, r *http.Request) {
+	s.runsMu.Lock()
+	run := s.runs[r.PathValue("id")]
+	s.runsMu.Unlock()
+	if run == nil {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	s.streamRun(w, r, run, 0)
 }
 
 func (s *Server) handleToolResult(w http.ResponseWriter, r *http.Request) {
@@ -304,6 +344,37 @@ func (s *Server) handleToolResult(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
+}
+
+func (s *Server) handleSteerRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.runsMu.Lock()
+	run := s.runs[id]
+	s.runsMu.Unlock()
+	if run == nil {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	var req struct {
+		Text     string     `json:"text"`
+		Parts    []WirePart `json:"parts"`
+		ClientID string     `json:"client_id"`
+	}
+	if err := jsonDecodeLimited(w, r, &req, 4*1024*1024); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	parts := req.Parts
+	if len(parts) == 0 && strings.TrimSpace(req.Text) != "" {
+		parts = []WirePart{{Type: "text", Text: req.Text}}
+	}
+	if len(parts) == 0 {
+		writeError(w, http.StatusBadRequest, "text or parts is required")
+		return
+	}
+	run.addSteer(WireMessage{Role: "user", Parts: parts})
+	run.emit("steered", map[string]any{"client_id": req.ClientID, "text": req.Text})
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
 }
 

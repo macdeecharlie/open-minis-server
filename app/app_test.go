@@ -1261,3 +1261,143 @@ func TestAuxiliaryOpenAIOnAnthropicProvider(t *testing.T) {
 		t.Fatalf("translated completion = %+v", out)
 	}
 }
+
+func TestRunEventReplay(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	req := RunRequest{
+		SessionID: "sess-replay", RunID: "run-replay", Model: "mock-1",
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
+	}
+	body, _ := json.Marshal(req)
+	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
+	hreq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(hreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	var readyID int
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "event: await_client") {
+			break
+		}
+		if strings.HasPrefix(line, "id: ") {
+			fmt.Sscanf(strings.TrimSpace(strings.TrimPrefix(line, "id: ")), "%d", &readyID)
+		}
+	}
+	resp.Body.Close()
+	if readyID == 0 {
+		t.Fatal("no event id was sent")
+	}
+	// The run is still waiting for the client tool; reconnect from the middle.
+	ereq, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/agent/runs/run-replay/events?after=2", nil)
+	ereq.Header.Set("Authorization", "Bearer test-token")
+	eresp, err := http.DefaultClient.Do(ereq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eresp.Body.Close()
+	esc := bufio.NewScanner(eresp.Body)
+	esc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	sawAwait := false
+	lastID := 0
+	for esc.Scan() {
+		line := esc.Text()
+		if strings.HasPrefix(line, "id: ") {
+			fmt.Sscanf(strings.TrimSpace(strings.TrimPrefix(line, "id: ")), "%d", &lastID)
+		}
+		if strings.HasPrefix(line, "event: await_client") {
+			sawAwait = true
+			break
+		}
+	}
+	if !sawAwait || lastID <= 2 {
+		t.Fatalf("replay did not resume after id 2: await=%v last=%d", sawAwait, lastID)
+	}
+	// Cancel so the blocked run does not linger.
+	creq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs/run-replay/cancel", nil)
+	creq.Header.Set("Authorization", "Bearer test-token")
+	cresp, err := http.DefaultClient.Do(creq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cresp.Body.Close()
+	if cresp.StatusCode != http.StatusAccepted {
+		t.Fatalf("cancel HTTP %d", cresp.StatusCode)
+	}
+}
+
+func TestRunSteering(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	req := RunRequest{
+		SessionID: "sess-steer", RunID: "run-steer", Model: "mock-1",
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
+	}
+	body, _ := json.Marshal(req)
+	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
+	hreq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(hreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	var toolID string
+	sawSteered := false
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "data:") {
+			var m map[string]any
+			_ = json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &m)
+			if id, ok := m["id"].(string); ok && toolID == "" && m["name"] == "memory_get" {
+				toolID = id
+			}
+		}
+		if strings.HasPrefix(line, "event: await_client") {
+			sreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs/run-steer/steer", strings.NewReader(`{"text":"also mention the moon"}`))
+			sreq.Header.Set("Authorization", "Bearer test-token")
+			sreq.Header.Set("Content-Type", "application/json")
+			sresp, err := http.DefaultClient.Do(sreq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sresp.Body.Close()
+			if sresp.StatusCode != http.StatusAccepted {
+				t.Fatalf("steer HTTP %d", sresp.StatusCode)
+			}
+			payload, _ := json.Marshal(ToolResult{ID: toolID, Name: "memory_get", Content: "client says hi"})
+			preq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs/run-steer/tool_result", bytes.NewReader(payload))
+			preq.Header.Set("Authorization", "Bearer test-token")
+			pres, err := http.DefaultClient.Do(preq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pres.Body.Close()
+			if pres.StatusCode != http.StatusAccepted {
+				t.Fatalf("tool result HTTP %d", pres.StatusCode)
+			}
+		}
+		if strings.HasPrefix(line, "event: steered") {
+			sawSteered = true
+		}
+		if strings.Contains(line, "also mention the moon") {
+			sawSteered = true
+		}
+	}
+	if !sawSteered {
+		t.Fatal("steer was not observed by the run")
+	}
+}

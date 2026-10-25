@@ -322,7 +322,7 @@ func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, st
 	go s.runAgent(req, run)
 	var finalText strings.Builder
 	var runErr error
-	for ev := range run.events {
+	run.subscribe(ctx, 0, func(_ int, ev Event) bool {
 		switch ev.Name {
 		case "assistant_end":
 			if m, ok := ev.Data.(map[string]any); ok {
@@ -341,7 +341,8 @@ func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, st
 				}
 			}
 		}
-	}
+		return true
+	})
 	if runErr != nil {
 		return sid, finalText.String(), runErr
 	}

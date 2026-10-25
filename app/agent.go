@@ -17,11 +17,18 @@ type Run struct {
 	Headless bool
 	ctx      context.Context
 	cancel   context.CancelFunc
-	events   chan Event
-	closed   sync.Once
 
 	pmu     sync.Mutex
 	pending map[string]chan ToolResult
+
+	smu    sync.Mutex
+	steers []WireMessage
+
+	logMu sync.Mutex
+	log   []Event
+	base  int // sequence number of log[0]; starts at 1
+	done  bool
+	wake  chan struct{}
 }
 
 func newRun(parent context.Context, id string) *Run {
@@ -30,22 +37,99 @@ func newRun(parent context.Context, id string) *Run {
 		ID:      id,
 		ctx:     ctx,
 		cancel:  cancel,
-		events:  make(chan Event, 256),
 		pending: map[string]chan ToolResult{},
+		wake:    make(chan struct{}, 1),
+		base:    1,
 	}
 }
 
+// emit records an event and wakes every subscriber. The log is the source of
+// truth for reconnects, so a slow client can never make the agent drop an
+// event or block.
 func (r *Run) emit(name string, data any) bool {
-	select {
-	case <-r.ctx.Done():
+	if r.ctx.Err() != nil {
 		return false
-	case r.events <- Event{Name: name, Data: data}:
-		return true
+	}
+	r.logMu.Lock()
+	if len(r.log) == 0 {
+		r.base = 1
+	}
+	r.log = append(r.log, Event{Name: name, Data: data})
+	r.logMu.Unlock()
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+// subscribe replays events after sequence number `after` (1-based), then waits
+// for new ones until the run finishes or ctx is cancelled.
+func (r *Run) subscribe(ctx context.Context, after int, fn func(seq int, ev Event) bool) {
+	for {
+		r.logMu.Lock()
+		start := after - r.base + 1
+		if start < 0 {
+			start = 0
+		}
+		var batch []Event
+		if start < len(r.log) {
+			batch = append([]Event(nil), r.log[start:]...)
+		}
+		done := r.done
+		base := r.base
+		r.logMu.Unlock()
+		for i, ev := range batch {
+			seq := base + start + i
+			if !fn(seq, ev) {
+				return
+			}
+			after = seq
+		}
+		if done {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-r.wake:
+		}
 	}
 }
 
 func (r *Run) close() {
-	r.closed.Do(func() { close(r.events) })
+	r.logMu.Lock()
+	if r.done {
+		r.logMu.Unlock()
+		return
+	}
+	r.done = true
+	r.logMu.Unlock()
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+	r.cancel()
+}
+
+func (r *Run) finished() bool {
+	r.logMu.Lock()
+	defer r.logMu.Unlock()
+	return r.done
+}
+
+func (r *Run) addSteer(msg WireMessage) {
+	r.smu.Lock()
+	r.steers = append(r.steers, msg)
+	r.smu.Unlock()
+}
+
+func (r *Run) takeSteers() []WireMessage {
+	r.smu.Lock()
+	defer r.smu.Unlock()
+	out := r.steers
+	r.steers = nil
+	return out
 }
 
 func (r *Run) beginClientTool(id string) chan ToolResult {
@@ -310,6 +394,9 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			} else {
 				messages = compactedMessages
 			}
+		}
+		if steers := run.takeSteers(); len(steers) > 0 {
+			messages = append(messages, steers...)
 		}
 		parts := []*WirePart{}
 		var textBuilder strings.Builder
