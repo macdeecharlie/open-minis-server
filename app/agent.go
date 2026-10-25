@@ -124,6 +124,15 @@ func (r *Run) waitDone(timeout time.Duration) bool {
 	}
 }
 
+func (r *Run) lastSeq() int {
+	r.logMu.Lock()
+	defer r.logMu.Unlock()
+	if len(r.log) == 0 {
+		return 0
+	}
+	return r.base + len(r.log) - 1
+}
+
 func (r *Run) finished() bool {
 	r.logMu.Lock()
 	defer r.logMu.Unlock()

@@ -276,6 +276,15 @@ func (s *Server) streamRun(w http.ResponseWriter, r *http.Request, run *Run, aft
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("X-Accel-Buffering", "no")
+	if run.finished() && after >= run.lastSeq() {
+		// Nothing left to replay. Emit a terminal event instead of an empty
+		// stream the client would reconnect to forever.
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "event: done\ndata: {\"stop_reason\":\"replay_end\",\"turns\":0}\n\n")
+		flusher.Flush()
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
