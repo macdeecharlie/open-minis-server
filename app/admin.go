@@ -41,6 +41,18 @@ func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 	if next.Sandbox.MaxOutput <= 0 {
 		next.Sandbox.MaxOutput = s.cfg.Sandbox.MaxOutput
 	}
+	if next.Sandbox.Mode == "" {
+		next.Sandbox.Mode = s.cfg.Sandbox.Mode
+	}
+	if next.Sandbox.AgentURL == "" {
+		next.Sandbox.AgentURL = s.cfg.Sandbox.AgentURL
+	}
+	if next.Sandbox.AgentToken == "" {
+		next.Sandbox.AgentToken = s.cfg.Sandbox.AgentToken
+	}
+	if next.Sandbox.AgentTokenEnv == "" {
+		next.Sandbox.AgentTokenEnv = s.cfg.Sandbox.AgentTokenEnv
+	}
 	if next.Update.CacheSeconds <= 0 {
 		next.Update.CacheSeconds = s.cfg.Update.CacheSeconds
 	}

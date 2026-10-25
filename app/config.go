@@ -47,9 +47,13 @@ type UpdateConfig struct {
 }
 
 type SandboxConfig struct {
-	WorkRoot  string `json:"work_root,omitempty"`
-	ShellUser string `json:"shell_user,omitempty"`
-	MaxOutput int    `json:"max_output_bytes,omitempty"`
+	Mode          string `json:"mode,omitempty"` // "local" | "agent"
+	AgentURL      string `json:"agent_url,omitempty"`
+	AgentToken    string `json:"agent_token,omitempty"`
+	AgentTokenEnv string `json:"agent_token_env,omitempty"`
+	WorkRoot      string `json:"work_root,omitempty"`
+	ShellUser     string `json:"shell_user,omitempty"`
+	MaxOutput     int    `json:"max_output_bytes,omitempty"`
 }
 
 const (
@@ -93,6 +97,18 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Update.CacheSeconds <= 0 {
 		cfg.Update.CacheSeconds = defaultUpdateCache
 	}
+	if v := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_MODE")); v != "" {
+		cfg.Sandbox.Mode = v
+	}
+	if v := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_AGENT_URL")); v != "" {
+		cfg.Sandbox.AgentURL = v
+	}
+	if v := strings.TrimSpace(os.Getenv("MINIS_SANDBOX_TOKEN")); v != "" && cfg.Sandbox.AgentToken == "" {
+		cfg.Sandbox.AgentToken = v
+	}
+	if cfg.Sandbox.Mode == "" {
+		cfg.Sandbox.Mode = "local"
+	}
 	if cfg.Sandbox.WorkRoot == "" {
 		cfg.Sandbox.WorkRoot = filepath.Join(cfg.DataDir, "workspaces")
 	}
@@ -113,6 +129,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Update.Token == "" && cfg.Update.TokenEnv != "" {
 		cfg.Update.Token = strings.TrimSpace(os.Getenv(cfg.Update.TokenEnv))
+	}
+	if cfg.Sandbox.AgentToken == "" && cfg.Sandbox.AgentTokenEnv != "" {
+		cfg.Sandbox.AgentToken = strings.TrimSpace(os.Getenv(cfg.Sandbox.AgentTokenEnv))
 	}
 	return validateConfig(&cfg)
 }
@@ -158,6 +177,12 @@ func validateConfig(cfg *Config) (*Config, error) {
 	}
 	if cfg.DefaultModel != "" && !seen[cfg.DefaultModel] {
 		return nil, fmt.Errorf("default_model %q is not configured", cfg.DefaultModel)
+	}
+	if cfg.Sandbox.Mode != "local" && cfg.Sandbox.Mode != "agent" {
+		return nil, errors.New("sandbox.mode must be local or agent")
+	}
+	if cfg.Sandbox.Mode == "agent" && cfg.Sandbox.AgentURL == "" {
+		return nil, errors.New("sandbox.agent_url is required in agent mode")
 	}
 	return cfg, nil
 }

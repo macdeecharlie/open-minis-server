@@ -186,7 +186,7 @@ func builtinTool(name string) ToolDef {
 	return ToolDef{Type: "function", Function: ToolFunction{Name: name, Description: desc, Parameters: b}}
 }
 
-func (s *Server) executeTool(ctx context.Context, sb *Sandbox, name string, raw json.RawMessage, emitOutput func(string)) ToolResult {
+func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, raw json.RawMessage, emitOutput func(string)) ToolResult {
 	title := ""
 	args := map[string]any{}
 	if len(raw) > 0 {

@@ -433,3 +433,82 @@ func TestModelListDefaultFirst(t *testing.T) {
 		t.Fatalf("default not first: %+v", list)
 	}
 }
+
+func TestRemoteSandboxRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	agent := &sandboxAgent{token: "sandbox-token", workRoot: root, maxOutput: 200_000}
+	ts := httptest.NewServer(agent.handler())
+	defer ts.Close()
+
+	sb, err := NewRemoteSandbox(SandboxConfig{
+		Mode: "agent", AgentURL: ts.URL, AgentToken: "sandbox-token",
+	}, "sess-remote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := sb.RunShell(ctx, "echo remote-hello", 20*time.Second, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode != 0 || !strings.Contains(res.Output, "remote-hello") {
+		t.Fatalf("shell result = %+v", res)
+	}
+	if err := sb.WriteFile("/var/minis/workspace/a.txt", "one\n", false, true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := sb.ReadFile("/var/minis/workspace/a.txt", 1, 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "one") {
+		t.Fatalf("read = %q", got)
+	}
+	n, err := sb.EditFile("/var/minis/workspace/a.txt", "one", "two", false)
+	if err != nil || n != 1 {
+		t.Fatalf("edit n=%d err=%v", n, err)
+	}
+	got, _ = sb.ReadFile("/var/minis/workspace/a.txt", 1, 0, 1000)
+	if !strings.Contains(got, "two") {
+		t.Fatalf("read after edit = %q", got)
+	}
+
+	bad, err := NewRemoteSandbox(SandboxConfig{
+		Mode: "agent", AgentURL: ts.URL, AgentToken: "wrong",
+	}, "sess-remote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bad.RunShell(ctx, "echo nope", time.Second, 0, nil); err == nil {
+		t.Fatal("wrong sandbox token was accepted")
+	}
+}
+
+func TestSandboxAgentHealth(t *testing.T) {
+	agent := &sandboxAgent{token: "t", workRoot: t.TempDir(), maxOutput: 1000}
+	ts := httptest.NewServer(agent.handler())
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("health HTTP %d", resp.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/info", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	var info map[string]any
+	if err := json.NewDecoder(resp2.Body).Decode(&info); err != nil {
+		t.Fatal(err)
+	}
+	if info["capabilities"] == nil {
+		t.Fatalf("info = %+v", info)
+	}
+}

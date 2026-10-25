@@ -166,7 +166,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 	providerClient := s.providerFor(provider)
 
-	sb, err := NewSandbox(s.cfg.Sandbox, sessionID)
+	sb, err := NewToolSandbox(s.cfg.Sandbox, sessionID)
 	if err != nil {
 		run.emit("error", map[string]any{"message": "sandbox: " + err.Error()})
 		return

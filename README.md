@@ -70,15 +70,27 @@ cd /opt/open-minis-server/docker
 sudo docker compose up -d --build
 ```
 
-The compose example runs two containers: the agent and a one-target `socat`
-forwarder. The agent joins only `minis_net`; the forwarder joins `minis_net`
-and the shared `internal` network, and forwards only to `open-minis-server`.
-Caddy stays on `internal` and proxies to the forwarder. The agent therefore
-never shares a network with Caddy, so a prompt-injected shell command cannot
-use Caddy's public listener as a gateway to other services on the VPS.
+The compose example runs three containers:
+
+- `open-minis-server` — agent loop, model credentials, sessions and update proxy.
+- `minis-sandbox` — a dedicated **full Debian** execution environment. The
+  agent's shell, file tools and workspace live here; it has no model or update
+  credentials, no Docker socket and no host mounts beyond its workspace.
+- `minis-proxy` — a one-target `socat` forwarder between Caddy and the server.
+
+The server is on `minis_net` + `sandbox_net`; the sandbox is only on
+`sandbox_net`; the forwarder is on `minis_net` + `internal`; Caddy is only on
+`internal`. Create both networks first:
 
 ```sh
 sudo docker network create minis_net
+sudo docker network create --subnet 172.21.0.0/16 minis_sandbox_net
+```
+
+Put a long random value in `/opt/open-minis-server/.env`:
+
+```sh
+MINIS_SANDBOX_TOKEN=...
 ```
 
 Add this to the Caddyfile:

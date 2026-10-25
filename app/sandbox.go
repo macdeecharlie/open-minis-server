@@ -22,6 +22,17 @@ import (
 // paths inside it. It deliberately maps the Android client's virtual paths
 // (/var/minis/workspace, /var/minis/attachments, ...) onto the server
 // workspace so the existing system prompt and skills keep working unchanged.
+// ToolSandbox is the execution boundary used by the agent loop. It is
+// implemented by the in-process workspace (local mode) and by the dedicated
+// full-Linux sandbox container client (agent mode).
+type ToolSandbox interface {
+	Workspace() string
+	RunShell(ctx context.Context, command string, timeout time.Duration, delay time.Duration, emit func(string)) (ShellResult, error)
+	ReadFile(p string, offset int, lines int, maxLength int) (string, error)
+	WriteFile(p, content string, appendMode bool, createDirs bool) error
+	EditFile(p, oldString, newString string, replaceAll bool) (int, error)
+}
+
 type Sandbox struct {
 	cfg         SandboxConfig
 	sessionID   string
@@ -82,6 +93,16 @@ func NewSandbox(cfg SandboxConfig, sessionID string) (*Sandbox, error) {
 }
 
 func (s *Sandbox) Workspace() string { return s.workspace }
+
+// NewToolSandbox selects the configured execution boundary. Local mode keeps
+// the in-process workspace for tests and development; agent mode talks to the
+// dedicated full-distro container described by sandbox.agent_url.
+func NewToolSandbox(cfg SandboxConfig, sessionID string) (ToolSandbox, error) {
+	if cfg.Mode == "agent" {
+		return NewRemoteSandbox(cfg, sessionID)
+	}
+	return NewSandbox(cfg, sessionID)
+}
 
 // virtualPath maps the client-visible Linux paths onto this session's
 // workspace. Anything outside the virtual roots is confined to the workspace.

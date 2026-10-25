@@ -22,11 +22,19 @@ func envOr(key, def string) string {
 }
 
 func main() {
+	role := flag.String("role", envOr("MINIS_ROLE", "server"), "server or sandbox")
 	configPath := flag.String("config", envOr("MINIS_CONFIG", "/data/config.json"), "path to config.json")
 	listen := flag.String("listen", envOr("MINIS_LISTEN", defaultListen), "listen address")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.LUTC)
+	if *role == "sandbox" {
+		runSandboxAgent()
+		return
+	}
+	if *role != "server" {
+		log.Fatalf("unknown role %q (want server or sandbox)", *role)
+	}
 	cfg, err := LoadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open-minis-server: %v\n\nExample config:\n%s\n", err, ExampleConfig)

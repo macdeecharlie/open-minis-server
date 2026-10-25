@@ -11,6 +11,10 @@ services:
       APP_GIT_BRANCH: main
       MINIS_CONFIG: /data/config.json
       MINIS_LISTEN: ":8080"
+      # Full-distro execution environment (not the server container).
+      MINIS_SANDBOX_MODE: agent
+      MINIS_SANDBOX_AGENT_URL: http://minis-sandbox:8090
+      MINIS_SANDBOX_TOKEN: ${MINIS_SANDBOX_TOKEN:?set MINIS_SANDBOX_TOKEN in ../.env}
       # Optional: read-only token for the private Android release repo. Set it
       # in ../.env (never in this file) and restart the container.
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -18,8 +22,37 @@ services:
       - ../data:/data
     networks:
       - minis_net
+      - sandbox_net
     expose:
       - "8080"
+
+  minis-sandbox:
+    build:
+      context: ..
+      dockerfile: docker/sandbox/Dockerfile
+    image: open-minis-sandbox:latest
+    container_name: minis-sandbox
+    restart: unless-stopped
+    environment:
+      MINIS_ROLE: sandbox
+      MINIS_SANDBOX_LISTEN: ":8090"
+      MINIS_SANDBOX_WORK_ROOT: /workspace/sessions
+      MINIS_SANDBOX_TOKEN: ${MINIS_SANDBOX_TOKEN:?set MINIS_SANDBOX_TOKEN in ../.env}
+      MINIS_SANDBOX_MAX_OUTPUT: "204800"
+    volumes:
+      - ../data/sandbox:/workspace/sessions
+    networks:
+      - sandbox_net
+    expose:
+      - "8090"
+    # This is a full distro for the agent, but it is not a host escape hatch:
+    # no host mounts beyond its workspace, no Docker socket, no shared network
+    # with Caddy or the VPS services.
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: "2.0"
+    pids_limit: 512
 
   # A one-target TCP forwarder. Caddy talks to this, and this talks only to the
   # server. The agent container never shares a Docker network with Caddy, so a
@@ -38,6 +71,8 @@ services:
 
 networks:
   minis_net:
+    external: true
+  sandbox_net:
     external: true
   internal:
     external: true
