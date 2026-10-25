@@ -164,5 +164,9 @@ curl -X POST https://minis.example.com/v1/admin/update-token \
   server, not a multi-tenant service.
 - `web_fetch` refuses loopback, private, link-local and unspecified addresses,
   and re-checks every redirect.
+- The agent container is isolated from the VPS's other Docker networks and
+  host listeners. `docker/egress-firewall.sh` + the systemd unit install the
+  `DOCKER-USER` rules; rerun `systemctl restart minis-egress-firewall` after a
+  Docker daemon restart.
 - `POST /v1/agent/runs` accepts up to 64 MiB (inline images and history).
 - No request bodies, tokens or provider keys are written to logs.
