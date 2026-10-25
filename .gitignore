@@ -12,3 +12,7 @@ app/*.test
 
 # Local deployment staging
 .deploy/
+
+# Release staging
+.deploy/
+deploy-staging/
