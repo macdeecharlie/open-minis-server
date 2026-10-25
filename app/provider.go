@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -179,6 +180,27 @@ func hasToolResults(msg WireMessage) bool {
 		}
 	}
 	return false
+}
+
+func streamErrorRetryable(err error) bool {
+	var ue *upstreamError
+	if errors.As(err, &ue) {
+		return ue.Status == 429 || ue.Status >= 500
+	}
+	var ne net.Error
+	if errors.As(err, &ne) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "connection reset") || strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "unexpected eof") || strings.Contains(s, "timeout")
+}
+
+func streamErrorFallbackable(err error, strategy string) bool {
+	if strings.EqualFold(strategy, "always") {
+		return true
+	}
+	return streamErrorRetryable(err)
 }
 
 func sanitizeProviderHeaderValue(v string) string {

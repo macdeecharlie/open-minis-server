@@ -165,7 +165,31 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		run.emit("error", map[string]any{"message": err.Error()})
 		return
 	}
-	providerClient := s.providerFor(provider)
+	type modelAttempt struct {
+		provider *Provider
+		model    *Model
+		client   ProviderClient
+	}
+	attempts := []modelAttempt{{provider: provider, model: model, client: s.providerFor(provider)}}
+	for _, id := range req.Fallbacks {
+		if id == "" || id == model.ID {
+			continue
+		}
+		fp, fm, ferr := s.cfg.ResolveModel(id)
+		if ferr != nil {
+			continue
+		}
+		duplicate := false
+		for _, a := range attempts {
+			if a.model.ID == fm.ID {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			attempts = append(attempts, modelAttempt{provider: fp, model: fm, client: s.providerFor(fp)})
+		}
+	}
 
 	sb, err := NewToolSandbox(s.cfg.Sandbox, sessionID)
 	if err != nil {
@@ -221,6 +245,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		"provider":   provider.ID,
 	})
 
+	startingAttempt := 0
 	for turn := 0; turn < maxTurns; turn++ {
 		if run.ctx.Err() != nil {
 			return
@@ -282,53 +307,95 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			return c
 		}
 
-		pres, streamErr := providerClient.Stream(run.ctx, ProviderRequest{
-			Model:     model,
-			System:    system,
-			Messages:  messages,
-			Tools:     tools,
-			MaxTokens: maxTokens,
-			Thinking:  req.Thinking,
-		}, func(ev ProviderEvent) error {
-			switch ev.Kind {
-			case "text":
-				appendText(ev.Text)
-			case "thinking":
-				thinkingBuf.WriteString(ev.Text)
-				run.emit("thinking", map[string]any{"text": ev.Text})
-			case "tool_start":
-				ensureCall(ev.ID, ev.Name)
-			case "tool_input":
-				c := ensureCall(ev.ID, ev.Name)
-				c.args.WriteString(ev.Args)
-				c.part.Args = json.RawMessage(`{}`)
-				run.emit("tool_input", map[string]any{"id": c.part.ID, "delta": ev.Args})
-			case "tool_call":
-				c := ensureCall(ev.ID, ev.Name)
-				args := strings.TrimSpace(ev.Args)
-				if args == "" {
-					args = "{}"
-				}
-				if !json.Valid([]byte(args)) {
-					args = "{}"
-				}
-				c.part.Args = json.RawMessage(args)
-				c.completed = true
-				executor := "client"
-				if serverToolNames[c.part.Name] && !clientOwnedCall(c.part.Name, c.part.Args) {
-					executor = "server"
-				}
-				var argObj any
-				_ = json.Unmarshal([]byte(args), &argObj)
-				run.emit("tool_call", map[string]any{
-					"id":       c.part.ID,
-					"name":     c.part.Name,
-					"args":     argObj,
-					"executor": executor,
+		var pres ProviderResult
+		var streamErr error
+		chosenAttempt := startingAttempt
+		for attemptIdx := startingAttempt; attemptIdx < len(attempts); attemptIdx++ {
+			attempt := attempts[attemptIdx]
+			emitted := false
+			for retry := 0; retry < 3; retry++ {
+				emitted = false
+				pres, streamErr = attempt.client.Stream(run.ctx, ProviderRequest{
+					Model:     attempt.model,
+					System:    system,
+					Messages:  messages,
+					Tools:     tools,
+					MaxTokens: maxTokens,
+					Thinking:  req.Thinking,
+				}, func(ev ProviderEvent) error {
+					emitted = true
+					switch ev.Kind {
+					case "text":
+						appendText(ev.Text)
+					case "thinking":
+						thinkingBuf.WriteString(ev.Text)
+						run.emit("thinking", map[string]any{"text": ev.Text})
+					case "tool_start":
+						ensureCall(ev.ID, ev.Name)
+					case "tool_input":
+						c := ensureCall(ev.ID, ev.Name)
+						c.args.WriteString(ev.Args)
+						c.part.Args = json.RawMessage(`{}`)
+						run.emit("tool_input", map[string]any{"id": c.part.ID, "delta": ev.Args})
+					case "tool_call":
+						c := ensureCall(ev.ID, ev.Name)
+						args := strings.TrimSpace(ev.Args)
+						if args == "" {
+							args = "{}"
+						}
+						if !json.Valid([]byte(args)) {
+							args = "{}"
+						}
+						c.part.Args = json.RawMessage(args)
+						c.completed = true
+						executor := "client"
+						if serverToolNames[c.part.Name] && !clientOwnedCall(c.part.Name, c.part.Args) {
+							executor = "server"
+						}
+						var argObj any
+						_ = json.Unmarshal([]byte(args), &argObj)
+						run.emit("tool_call", map[string]any{
+							"id":       c.part.ID,
+							"name":     c.part.Name,
+							"args":     argObj,
+							"executor": executor,
+						})
+					}
+					return nil
 				})
+				if streamErr == nil {
+					chosenAttempt = attemptIdx
+					break
+				}
+				if run.ctx.Err() != nil {
+					return
+				}
+				if emitted {
+					break
+				}
+				if streamErrorRetryable(streamErr) && retry < 2 {
+					select {
+					case <-run.ctx.Done():
+						return
+					case <-time.After(time.Duration(1<<retry) * time.Second):
+					}
+					continue
+				}
+				break
 			}
-			return nil
-		})
+			if streamErr == nil {
+				break
+			}
+			if emitted || !streamErrorFallbackable(streamErr, req.FallbackStrategy) {
+				break
+			}
+		}
+		startingAttempt = chosenAttempt
+		if streamErr == nil && chosenAttempt > 0 {
+			run.emit("info", map[string]any{
+				"text": "⚠️ " + attempts[0].model.ID + " failed; switched to " + attempts[chosenAttempt].model.ID,
+			})
+		}
 		if streamErr != nil {
 			if run.ctx.Err() != nil {
 				return

@@ -659,3 +659,41 @@ func timeLocation(t *testing.T, name string) *time.Location {
 	}
 	return loc
 }
+
+func TestAgentFallbackToConfiguredModel(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "busy", http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, "mock")
+	cfg.Providers = []Provider{
+		{ID: "bad", Kind: "openai", BaseURL: upstream.URL, APIKey: "k", Models: []Model{{ID: "bad-1", Name: "Bad"}}},
+		{ID: "mock", Kind: "mock", Models: []Model{{ID: "mock-1", Name: "Mock"}}},
+	}
+	cfg.DefaultModel = "bad-1"
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	frames := runSSE(t, ts, RunRequest{
+		SessionID: "sess-fallback", RunID: "run-fallback", Model: "bad-1",
+		Fallbacks: []string{"mock-1"}, FallbackStrategy: "always",
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hello"}}}},
+		MaxTurns: 2,
+	})
+	var sawInfo, sawDone bool
+	for _, f := range frames {
+		if f.Event == "info" {
+			sawInfo = true
+		}
+		if f.Event == "done" {
+			sawDone = true
+		}
+		if f.Event == "error" {
+			t.Fatalf("fallback failed: %v", f.Data)
+		}
+	}
+	if !sawInfo || !sawDone {
+		t.Fatalf("fallback events info=%v done=%v", sawInfo, sawDone)
+	}
+}
