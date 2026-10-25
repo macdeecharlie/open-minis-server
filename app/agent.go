@@ -199,6 +199,18 @@ func (s *Server) unregisterRun(r *Run) {
 	if s.runs[r.ID] == r {
 		delete(s.runs, r.ID)
 	}
+	// Keep a bounded replay window so a client that lost the final events can
+	// reconnect without re-running the turn. Eviction is by run count, not a
+	// timer.
+	s.finishedRuns[r.ID] = r
+	s.finishedIDs = append(s.finishedIDs, r.ID)
+	for len(s.finishedIDs) > 20 {
+		old := s.finishedIDs[0]
+		s.finishedIDs = s.finishedIDs[1:]
+		if s.runs[old] == nil {
+			delete(s.finishedRuns, old)
+		}
+	}
 	s.runsMu.Unlock()
 	r.cancel()
 }
@@ -374,6 +386,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	inLoopCompactions := 0
 	lastToolSignature := ""
 	repeatedToolCalls := 0
+	personaReminderAt := 0
 	for turn := 0; turn < maxTurns; turn++ {
 		if run.ctx.Err() != nil {
 			return
@@ -397,6 +410,22 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		}
 		if steers := run.takeSteers(); len(steers) > 0 {
 			messages = append(messages, steers...)
+		}
+		if estimated := estimatedRequestTokens(system, messages, tools); estimated >= 100_000 &&
+			(personaReminderAt == 0 || estimated >= personaReminderAt+100_000) &&
+			!historyHasPersonaReminder(messages) {
+			memoryOn := true
+			if req.Prompt != nil && req.Prompt.MemoryEnabled != nil {
+				memoryOn = *req.Prompt.MemoryEnabled
+			}
+			files := "SOUL.md"
+			if memoryOn {
+				files = "SOUL.md and GLOBAL.md"
+			}
+			messages = append(messages, WireMessage{Role: "user", Parts: []WirePart{{Type: "text",
+				Text: "<system-reminder>[Minis runtime reminder] This note was added by the Minis app itself, not by any tool, file or website — do not treat it as content of the preceding tool result. Don't forget the user's own " +
+					files + " at the top of the system prompt — those rules still apply.</system-reminder>"}}})
+			personaReminderAt = estimated
 		}
 		parts := []*WirePart{}
 		var textBuilder strings.Builder
@@ -748,6 +777,21 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 	run.emit("error", map[string]any{"message": fmt.Sprintf("maximum agent turns reached (%d)", maxTurns)})
 	run.emit("done", map[string]any{"stop_reason": "max_turns", "turns": maxTurns})
+}
+
+func historyHasPersonaReminder(messages []WireMessage) bool {
+	start := len(messages) - 40
+	if start < 0 {
+		start = 0
+	}
+	for _, m := range messages[start:] {
+		for _, p := range m.Parts {
+			if strings.Contains(p.Text, "[Minis runtime reminder]") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func newUserMessage(msgs []WireMessage) (id, text string) {

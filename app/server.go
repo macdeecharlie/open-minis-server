@@ -23,8 +23,10 @@ type Server struct {
 	http       *providerHTTP
 	started    time.Time
 
-	runsMu sync.Mutex
-	runs   map[string]*Run
+	runsMu       sync.Mutex
+	runs         map[string]*Run
+	finishedRuns map[string]*Run
+	finishedIDs  []string
 
 	scheduledStore *ScheduledStore
 	scheduler      *Scheduler
@@ -54,6 +56,7 @@ func NewServer(cfg *Config, store *Store, configPath string) *Server {
 		http:           newProviderHTTP(),
 		started:        time.Now(),
 		runs:           map[string]*Run{},
+		finishedRuns:   map[string]*Run{},
 		updateCache:    map[string]updateCacheEntry{},
 		scheduledStore: scheduledStore,
 		pendingConfig:  map[string]pendingConfigChange{},
@@ -316,8 +319,12 @@ func (s *Server) streamRun(w http.ResponseWriter, r *http.Request, run *Run, aft
 }
 
 func (s *Server) handleRunEvents(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
 	s.runsMu.Lock()
-	run := s.runs[r.PathValue("id")]
+	run := s.runs[id]
+	if run == nil {
+		run = s.finishedRuns[id]
+	}
 	s.runsMu.Unlock()
 	if run == nil {
 		writeError(w, http.StatusNotFound, "run not found")

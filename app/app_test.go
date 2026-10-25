@@ -1492,3 +1492,38 @@ func TestCLIConfigConfirmation(t *testing.T) {
 		t.Fatalf("reused token HTTP %d, want 404", code)
 	}
 }
+
+func TestCompletedRunReplay(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	req := RunRequest{
+		SessionID: "sess-done-replay", RunID: "run-done-replay", Model: "mock-1",
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "run [[shell:echo finished-replay]]"}}}},
+	}
+	body, _ := json.Marshal(req)
+	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
+	hreq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(hreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	time.Sleep(50 * time.Millisecond)
+	ereq, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/agent/runs/run-done-replay/events?after=0", nil)
+	ereq.Header.Set("Authorization", "Bearer test-token")
+	eresp, err := http.DefaultClient.Do(ereq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eresp.Body.Close()
+	raw, _ := io.ReadAll(eresp.Body)
+	if !strings.Contains(string(raw), "finished-replay") || !strings.Contains(string(raw), "event: done") {
+		t.Fatalf("completed replay = %s", raw)
+	}
+}
