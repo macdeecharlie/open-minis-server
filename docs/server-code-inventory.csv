@@ -9,7 +9,7 @@ app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
 app/api_scheduled.go,53,scheduled task API
 app/api_terminal.go,83,terminal API proxy
-app/app_test.go,1765,test suite
+app/app_test.go,1832,test suite
 app/cli.go,666,minis-* CLI implementations
 app/config.go,295,configuration and validation
 app/context.go,523,"context estimator, compaction, offload, image budget, tool-pair repair"
@@ -28,11 +28,11 @@ app/provider.go,256,"provider HTTP, SSE, idle watchdog, error classification"
 app/provider_anthropic.go,352,"Anthropic wire, prompt cache"
 app/provider_gemini.go,237,"Gemini wire, thought signatures, audio"
 app/provider_mock.go,129,offline test provider
-app/provider_openai.go,393,OpenAI-compatible wire
+app/provider_openai.go,401,OpenAI-compatible wire
 app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
 app/sandbox_agent.go,506,sandbox container API
 app/sandbox_remote.go,299,server to sandbox client
-app/sandbox_terminal.go,298,PTY terminal
+app/sandbox_terminal.go,309,PTY terminal
 app/scheduled.go,474,server scheduler and headless runner
 app/server.go,485,"HTTP routes, SSE, sessions, files, terminal proxy, config"
 app/store.go,348,append-only session store
@@ -110,9 +110,9 @@ docker/sandbox/mcp-cli/lib/utils/__init__.py,0,bundled MCP client (from the offi
 docker/sandbox/mcp-cli/lib/utils/config.py,196,bundled MCP client (from the official assets)
 docker/sandbox/mcp-cli/lib/utils/deps.py,70,bundled MCP client (from the official assets)
 docker/sandbox/minis-session-exec,27,sandbox image and deployment
-docs/agent-protocol.md,175,documentation
-docs/architecture.md,122,documentation
-docs/parity-matrix.md,171,documentation
-docs/verification.md,78,documentation
+docs/agent-protocol.md,182,documentation
+docs/architecture.md,123,documentation
+docs/parity-matrix.md,186,documentation
+docs/verification.md,89,documentation
 scripts/android_inventory.py,338,inventory tooling
 scripts/server_inventory.py,96,inventory tooling
