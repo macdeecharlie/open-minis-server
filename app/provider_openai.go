@@ -15,7 +15,7 @@ type openAIProvider struct {
 }
 
 func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
-	msgs, err := openAIMessages(req.Messages, modelSupportsImages(req.Model))
+	msgs, err := openAIMessages(req.Messages, modelSupportsImages(req.Model), suppressReasoningEcho(p.cfg.BaseURL, req.Model.ID))
 	if err != nil {
 		return ProviderResult{}, err
 	}
@@ -239,7 +239,7 @@ func mapOpenAIStop(s string) string {
 	}
 }
 
-func openAIMessages(msgs []WireMessage, supportsImages bool) ([]map[string]any, error) {
+func openAIMessages(msgs []WireMessage, supportsImages, suppressReasoning bool) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
@@ -270,7 +270,7 @@ func openAIMessages(msgs []WireMessage, supportsImages bool) ([]map[string]any, 
 			if text == "" && len(toolCalls) == 0 {
 				continue
 			}
-			if strings.TrimSpace(m.ReasoningContent) != "" {
+			if strings.TrimSpace(m.ReasoningContent) != "" && !suppressReasoning {
 				msg["reasoning_content"] = m.ReasoningContent
 			}
 			out = append(out, msg)
@@ -390,4 +390,12 @@ func modelSupportsImages(model *Model) bool {
 		}
 	}
 	return false
+}
+
+// Some strict OpenAI-compatible vendors reject an unknown reasoning_content
+// field on historical assistant turns. The official client suppresses the echo
+// for these families; keep the same behavior instead of breaking turn two.
+func suppressReasoningEcho(baseURL, modelID string) bool {
+	hay := strings.ToLower(baseURL + " " + modelID)
+	return strings.Contains(hay, "mistral") || strings.Contains(hay, "cerebras")
 }

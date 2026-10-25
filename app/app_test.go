@@ -1686,7 +1686,7 @@ func TestAudioInputMapping(t *testing.T) {
 	msgs, err := openAIMessages([]WireMessage{{Role: "user", Parts: []WirePart{
 		{Type: "text", Text: "transcribe"},
 		{Type: "audio", Format: "wav", Mime: "audio/wav", Data: "YWJj"},
-	}}}, false)
+	}}}, false, false)
 	if err != nil || len(msgs) != 1 {
 		t.Fatalf("msgs=%+v err=%v", msgs, err)
 	}
@@ -1731,7 +1731,7 @@ func TestToolResultImageMapping(t *testing.T) {
 		Type: "tool_result", ID: "call_1", Name: "browser_use", Content: "screenshot",
 		Mime: "image/png", Data: "aW1n",
 	}}}
-	msgs, err := openAIMessages([]WireMessage{msg}, true)
+	msgs, err := openAIMessages([]WireMessage{msg}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1739,7 +1739,7 @@ func TestToolResultImageMapping(t *testing.T) {
 	if !strings.Contains(blob, "image_url") || !strings.Contains(blob, "data:image/png;base64,aW1n") || !strings.Contains(blob, "tool_call_id: call_1") {
 		t.Fatalf("OpenAI carrier missing: %s", blob)
 	}
-	if _, err := openAIMessages([]WireMessage{msg}, false); err != nil {
+	if _, err := openAIMessages([]WireMessage{msg}, false, false); err != nil {
 		t.Fatal(err)
 	}
 	amsgs, err := anthropicMessages([]WireMessage{msg})
@@ -1761,5 +1761,72 @@ func TestImageBudgetToolResult(t *testing.T) {
 	}
 	if out[0].Parts[0].Data != "" || !strings.Contains(out[0].Parts[0].Content, "image omitted") {
 		t.Fatalf("tool image was not omitted cleanly: %+v", out[0].Parts[0])
+	}
+}
+
+func TestClientToolImageResult(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	req := RunRequest{SessionID: "sess-imgtool", RunID: "run-imgtool", Model: "mock-1",
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "look [[client:read_image]]"}}}}}
+	body, _ := json.Marshal(req)
+	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
+	hreq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(hreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	var toolID string
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "data:") {
+			var m map[string]any
+			_ = json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &m)
+			if m["name"] == "read_image" {
+				if id, ok := m["id"].(string); ok {
+					toolID = id
+				}
+			}
+		}
+		if strings.HasPrefix(line, "event: await_client") {
+			payload, _ := json.Marshal(ToolResult{
+				ID: toolID, Name: "read_image", Content: "image", Image: "aW1n", ImageMime: "image/png", ImagePath: "/var/minis/attachments/x.png",
+			})
+			preq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs/run-imgtool/tool_result", bytes.NewReader(payload))
+			preq.Header.Set("Authorization", "Bearer test-token")
+			pres, err := http.DefaultClient.Do(preq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pres.Body.Close()
+			if pres.StatusCode != http.StatusAccepted {
+				t.Fatalf("tool result HTTP %d", pres.StatusCode)
+			}
+		}
+		if strings.HasPrefix(line, "event: done") {
+			break
+		}
+	}
+	msgs, err := store.Messages("sess-imgtool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range msgs {
+		for _, p := range m.Parts {
+			if p.Type == "tool_result" && p.Data == "aW1n" && p.Mime == "image/png" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("image tool result was not persisted: %+v", msgs)
 	}
 }
