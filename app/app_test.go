@@ -35,6 +35,12 @@ func testConfig(t *testing.T, kind string) *Config {
 	}
 }
 
+func mockTool(name string) ToolDef {
+	return ToolDef{Type: "function", Function: ToolFunction{
+		Name: name, Parameters: json.RawMessage(`{"type":"object","properties":{"tool_title":{"type":"string"}}}`),
+	}}
+}
+
 func testServer(t *testing.T, kind string) (*Server, *httptest.Server) {
 	t.Helper()
 	cfg := testConfig(t, kind)
@@ -190,6 +196,7 @@ func TestClientToolRoundTrip(t *testing.T) {
 		SessionID: "sess-client",
 		RunID:     "run-client",
 		Model:     "mock-1",
+		Tools:     []ToolDef{mockTool("memory_get")},
 		Messages: []WireMessage{{
 			Role:  "user",
 			Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}},
@@ -811,8 +818,8 @@ func TestDeviceCLIRouting(t *testing.T) {
 		"/usr/local/bin/android-open https://example.com":        true,
 		"ANDROID_X=1 sudo timeout 10 android-location current":   true,
 		"minis-mcp-cli list":                                     false,
-		"minis-config get defaults":                              false,
-		"minis-model-use list":                                   false,
+		"minis-config get defaults":                              true,
+		"minis-model-use list":                                   true,
 		"minis-scheduled list":                                   true,
 		"minis-sessions-cli search --keywords budget":            false,
 		"echo 'android-calendar is a CLI'":                       false,
@@ -1287,6 +1294,7 @@ func TestRunEventReplay(t *testing.T) {
 
 	req := RunRequest{
 		SessionID: "sess-replay", RunID: "run-replay", Model: "mock-1",
+		Tools:    []ToolDef{mockTool("memory_get")},
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
 	}
 	body, _ := json.Marshal(req)
@@ -1359,6 +1367,7 @@ func TestRunSteering(t *testing.T) {
 
 	req := RunRequest{
 		SessionID: "sess-steer", RunID: "run-steer", Model: "mock-1",
+		Tools:    []ToolDef{mockTool("memory_get")},
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
 	}
 	body, _ := json.Marshal(req)
@@ -1556,7 +1565,7 @@ func TestOpenAIRequestParameters(t *testing.T) {
 	if _, ok := body["max_completion_tokens"]; !ok {
 		t.Fatalf("gpt-5 request did not use max_completion_tokens: %+v", body)
 	}
-	if body["reasoning_effort"] != "high" {
+	if body["reasoning_effort"] != "max" {
 		t.Fatalf("reasoning_effort = %v", body["reasoning_effort"])
 	}
 	if _, ok := body["max_tokens"]; ok {
@@ -1606,6 +1615,7 @@ func TestCancelStopsRun(t *testing.T) {
 
 	req := RunRequest{
 		SessionID: "sess-cancel", RunID: "run-cancel", Model: "mock-1",
+		Tools:    []ToolDef{mockTool("memory_get")},
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
 	}
 	body, _ := json.Marshal(req)
@@ -1772,6 +1782,7 @@ func TestClientToolImageResult(t *testing.T) {
 	defer ts.Close()
 
 	req := RunRequest{SessionID: "sess-imgtool", RunID: "run-imgtool", Model: "mock-1",
+		Tools:    []ToolDef{mockTool("read_image")},
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "look [[client:read_image]]"}}}}}
 	body, _ := json.Marshal(req)
 	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
@@ -2135,5 +2146,198 @@ func TestResponsesAutoRouting(t *testing.T) {
 	}
 	if shouldUseResponsesAPI("https://api.openai.com/v1", "gpt-4o") {
 		t.Fatal("GPT-4o should keep Chat Completions")
+	}
+}
+
+func TestToolLoopDetectorStrategies(t *testing.T) {
+	args := json.RawMessage(`{"tool_title":"check","command":"ls"}`)
+	d := newToolLoopDetector()
+	for i := 0; i < 9; i++ {
+		if r := d.check("shell_execute", args); r.Level != "" {
+			t.Fatalf("early check %d = %+v", i, r)
+		}
+		d.record("shell_execute", args, "same output", "")
+	}
+	if r := d.record("shell_execute", args, "same output", ""); r.Level != "warning" {
+		t.Fatalf("10th call = %+v", r)
+	}
+	// No-progress circuit breaker at 30 identical outcomes.
+	for i := 0; i < 20; i++ {
+		d.record("shell_execute", args, "same output", "")
+	}
+	if r := d.check("shell_execute", args); r.Level != "critical" {
+		t.Fatalf("circuit breaker = %+v", r)
+	}
+
+	u := newToolLoopDetector()
+	for i := 0; i < 10; i++ {
+		u.record("missing_tool", json.RawMessage(`{"x":1}`), "", "Unknown tool: missing_tool")
+	}
+	if r := u.check("missing_tool", json.RawMessage(`{"x":1}`)); r.Level != "critical" || !strings.Contains(r.Message, "unavailable tool") {
+		t.Fatalf("unknown streak = %+v", r)
+	}
+
+	p := newToolLoopDetector()
+	poll := json.RawMessage(`{"tool_title":"poll","action":"poll"}`)
+	for i := 0; i < 10; i++ {
+		p.record("process", poll, "still running", "")
+	}
+	if r := p.check("process", poll); r.Level != "warning" {
+		t.Fatalf("poll warning = %+v", r)
+	}
+	for i := 0; i < 10; i++ {
+		p.record("process", poll, "still running", "")
+	}
+	if r := p.check("process", poll); r.Level != "critical" {
+		t.Fatalf("poll critical = %+v", r)
+	}
+}
+
+func TestToolLoopDetectorHydrationAndExemption(t *testing.T) {
+	var msgs []WireMessage
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("c%d", i)
+		msgs = append(msgs,
+			WireMessage{Role: "assistant", Parts: []WirePart{{Type: "tool_use", ID: id, Name: "shell_execute", Args: json.RawMessage(`{"command":"date"}`)}}},
+			WireMessage{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: id, Name: "shell_execute", Content: "same"}}},
+		)
+	}
+	d := newToolLoopDetector()
+	d.hydrate(msgs)
+	if r := d.check("shell_execute", json.RawMessage(`{"command":"date"}`)); r.Level != "warning" {
+		t.Fatalf("hydrated repeat = %+v", r)
+	}
+	s := newToolLoopDetector()
+	s.exemptNextCall()
+	if r := s.record("shell_execute", json.RawMessage(`{"command":"date"}`), "same", ""); r.Level != "" {
+		t.Fatalf("scheduled exemption = %+v", r)
+	}
+}
+
+func TestToolTitleReminder(t *testing.T) {
+	d := newToolLoopDetector()
+	for i := 0; i < 11; i++ {
+		got := d.recordToolTitle(json.RawMessage(`{"command":"ls"}`), true)
+		if i == 0 || i == 10 {
+			if got == "" {
+				t.Fatalf("reminder missing on call %d", i+1)
+			}
+		} else if got != "" {
+			t.Fatalf("reminder repeated on call %d", i+1)
+		}
+	}
+	if got := d.recordToolTitle(json.RawMessage(`{"tool_title":"x"}`), true); got != "" {
+		t.Fatal("titled call should not be reminded")
+	}
+	if got := d.recordToolTitle(json.RawMessage(`{}`), false); got != "" {
+		t.Fatal("untitled tool should not be reminded")
+	}
+}
+
+func TestPreflightToolCall(t *testing.T) {
+	tools := []ToolDef{
+		{Type: "function", Function: ToolFunction{Name: "file_edit", Parameters: json.RawMessage(`{"type":"object","properties":{"tool_title":{},"path":{},"old_string":{},"new_string":{}},"required":["tool_title","path","old_string","new_string"]}`)}},
+		{Type: "function", Function: ToolFunction{Name: "shell_execute", Parameters: json.RawMessage(`{"type":"object","properties":{"tool_title":{},"command":{}},"required":["tool_title","command"]}`)}},
+	}
+	if got := preflightToolCall("file_edit", json.RawMessage(`{"path":"/x","old_string":"a","new_string":""}`), tools); got != "" {
+		t.Fatalf("empty new_string should be allowed: %s", got)
+	}
+	if got := preflightToolCall("file_edit", json.RawMessage(`{"path":"/x","old_string":"a"}`), tools); !strings.Contains(got, "new_string") {
+		t.Fatalf("missing field = %q", got)
+	}
+	if got := preflightToolCall("shell_execute", json.RawMessage(`{"tool_title":"x","command":""}`), tools); !strings.Contains(got, "command") {
+		t.Fatalf("empty command = %q", got)
+	}
+	if got := preflightToolCall("shell_execute", json.RawMessage(`{}`), tools); !strings.Contains(got, "requires: command") {
+		t.Fatalf("empty args = %q", got)
+	}
+}
+
+func TestAnthropicThinkingConfig(t *testing.T) {
+	thinking, output := anthropicThinkingConfig("claude-sonnet-4-5", true, "high", 8192)
+	if thinking == nil || thinking["type"] != "enabled" || thinking["budget_tokens"] != 8191 || output != nil {
+		t.Fatalf("legacy thinking = %+v %+v", thinking, output)
+	}
+	thinking, output = anthropicThinkingConfig("claude-opus-4-7", true, "xhigh", 16000)
+	if thinking == nil || thinking["type"] != "adaptive" || output["effort"] != "max" {
+		t.Fatalf("adaptive thinking = %+v %+v", thinking, output)
+	}
+	thinking, output = anthropicThinkingConfig("claude-opus-4-7", true, "off", 16000)
+	if thinking == nil || thinking["type"] != "disabled" {
+		t.Fatalf("4.x off = %+v %+v", thinking, output)
+	}
+	thinking, _ = anthropicThinkingConfig("claude-sonnet-5-5", true, "off", 16000)
+	if thinking == nil || thinking["type"] != "between_tools" {
+		t.Fatalf("sonnet 5.5 off = %+v", thinking)
+	}
+	thinking, output = anthropicThinkingConfig("claude-opus-5", true, "off", 16000)
+	if thinking == nil || thinking["type"] != "adaptive" || output["effort"] != "low" {
+		t.Fatalf("opus 5 off = %+v %+v", thinking, output)
+	}
+	if thinking, _ = anthropicThinkingConfig("claude-sonnet-4-5", true, "off", 16000); thinking != nil {
+		t.Fatalf("legacy off should omit thinking: %+v", thinking)
+	}
+	if thinking, _ = anthropicThinkingConfig("custom-model", false, "high", 16000); thinking != nil {
+		t.Fatalf("non-reasoning model should omit thinking: %+v", thinking)
+	}
+}
+
+func TestAnthropicRequestThinkingAndAuth(t *testing.T) {
+	var body map[string]any
+	var auth, key, beta string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		key = r.Header.Get("x-api-key")
+		beta = r.Header.Get("anthropic-beta")
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+	p := &anthropicProvider{cfg: &Provider{ID: "a", Kind: "anthropic", BaseURL: upstream.URL, APIKey: "sk-test"}, http: newProviderHTTP()}
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model:    &Model{ID: "claude-sonnet-4-5", SupportsReasoning: true},
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+		Thinking: "high", MaxTokens: 8192,
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth != "Bearer sk-test" || key != "" {
+		t.Fatalf("custom endpoint auth = %q key=%q", auth, key)
+	}
+	if beta != "interleaved-thinking-2025-05-14" {
+		t.Fatalf("beta = %q", beta)
+	}
+	thinking, _ := body["thinking"].(map[string]any)
+	if thinking["type"] != "enabled" || thinking["budget_tokens"] != float64(8191) {
+		t.Fatalf("request thinking = %+v", body["thinking"])
+	}
+}
+
+func TestOpenAIReasoningOffAndClamp(t *testing.T) {
+	if got := openAIReasoningEffortFor("https://api.openai.com/v1", &Model{ID: "gpt-5.6", SupportsReasoning: true}, "off"); got != "none" {
+		t.Fatalf("official OpenAI off = %q", got)
+	}
+	if got := openAIReasoningEffortFor("https://api.openai.com/v1", &Model{ID: "gpt-6-astra", SupportsReasoning: true, ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max"}}, "off"); got != "low" {
+		t.Fatalf("off should clamp to lowest declared tier: %q", got)
+	}
+	if got := openAIReasoningEffortFor("https://api.openai.com/v1", &Model{ID: "gpt-6", SupportsReasoning: true, ReasoningEfforts: []string{"low", "high"}}, "xhigh"); got != "high" {
+		t.Fatalf("xhigh should clamp down: %q", got)
+	}
+	if got := openAIReasoningEffortFor("https://relay.example/v1", &Model{ID: "x", SupportsReasoning: true}, "off"); got != "" {
+		t.Fatalf("unknown relay off should omit: %q", got)
+	}
+	if got := openAIReasoningEffortFor("https://ark.example/v1", &Model{ID: "doubao-x", SupportsReasoning: true}, "off"); got != "minimal" {
+		t.Fatalf("ark off = %q", got)
+	}
+}
+
+func TestProviderIdleTimeoutOverride(t *testing.T) {
+	if got := (&Provider{}).idleTimeout(); got != providerIdleTimeout {
+		t.Fatalf("default idle timeout = %s", got)
+	}
+	if got := (&Provider{IdleTimeoutSec: 120}).idleTimeout(); got != 2*time.Minute {
+		t.Fatalf("configured idle timeout = %s", got)
 	}
 }

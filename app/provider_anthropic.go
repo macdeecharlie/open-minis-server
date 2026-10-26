@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -26,12 +28,16 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		"messages":   msgs,
 		"stream":     true,
 	}
-	// Extended thinking needs signed thinking blocks replayed on every
-	// subsequent turn. The server keeps only text/reasoning_content, not the
-	// signatures, so enabling it here would make the second tool turn fail.
-	// Native Anthropic runs without extended thinking; OpenRouter's
-	// OpenAI-compatible reasoning path is unaffected.
-	_ = maxTokens
+	// Mirror the official thinking contract. Legacy Claude models take an
+	// explicit token budget; Claude 4.6+ take adaptive thinking plus an
+	// output-config effort. OFF is encoded per model family,
+	// because an absent field is not off on Claude 5.
+	if thinking, outputConfig := anthropicThinkingConfig(req.Model.ID, req.Model.SupportsReasoning, req.Thinking, maxTokens); thinking != nil {
+		body["thinking"] = thinking
+		if outputConfig != nil {
+			body["output_config"] = outputConfig
+		}
+	}
 	if strings.TrimSpace(req.System) != "" {
 		// Cache the stable prompt head (identity, tool rules, skills). The
 		// runtime suffix is part of the same block; Anthropic caches the
@@ -57,9 +63,21 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		}
 		body["tools"] = tools
 	}
-	headers := map[string]string{
-		"x-api-key":         p.cfg.APIKey,
-		"anthropic-version": "2023-06-01",
+	headers := map[string]string{"anthropic-version": "2023-06-01"}
+	custom := !strings.Contains(strings.ToLower(p.cfg.BaseURL), "api.anthropic.com")
+	if p.cfg.APIKey != "" {
+		if custom {
+			headers["Authorization"] = "Bearer " + p.cfg.APIKey
+		} else {
+			headers["x-api-key"] = p.cfg.APIKey
+		}
+	}
+	if req.Model.SupportsReasoning && thinkingEnabled(req.Thinking) {
+		if anthropicUsesAdaptiveThinking(req.Model.ID) {
+			headers["anthropic-beta"] = "effort-2025-11-24"
+		} else {
+			headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
+		}
 	}
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
@@ -70,7 +88,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
 	defer idleBody.Close()
 
 	type block struct {
@@ -213,7 +231,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
 		}
 		return ProviderResult{}, err
 	}
@@ -340,29 +358,146 @@ func anthropicMessages(msgs []WireMessage, echoReasoning bool) ([]map[string]any
 	return out, nil
 }
 
-func anthropicThinkingBudget(thinking string) int {
-	switch strings.ToLower(strings.TrimSpace(thinking)) {
-	case "low":
-		return 1024
-	case "medium":
-		return 2048
-	case "high":
-		return 4096
-	case "xhigh":
-		return 8192
-	case "max":
-		return 16384
-	case "ultra":
-		return 24576
-	default:
-		return 0
-	}
-}
-
 func anthropicEchoesUnsignedThinking(baseURL string, model *Model) bool {
 	if model == nil || !model.SupportsReasoning {
 		return false
 	}
 	base := strings.ToLower(strings.TrimSpace(baseURL))
 	return base != "" && !strings.Contains(base, "api.anthropic.com")
+}
+
+func thinkingEnabled(level string) bool {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+// parseClaudeVersion reads the major/minor version out of ids like
+// claude-sonnet-4-6, claude-4.6-opus or claude-opus-4-20250514.
+func parseClaudeVersion(modelID string) (int, int, bool) {
+	lower := strings.ToLower(modelID)
+	i := strings.Index(lower, "claude")
+	if i < 0 {
+		return 0, 0, false
+	}
+	rest := lower[i+len("claude"):]
+	re := regexp.MustCompile(`[-/]?(\d+)(?:[-.](\d{1,2}))?(?:$|[^0-9])`)
+	m := re.FindStringSubmatch(rest)
+	if m == nil {
+		return 0, 0, false
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor := 0
+	if m[2] != "" {
+		minor, _ = strconv.Atoi(m[2])
+	}
+	return major, minor, true
+}
+
+func anthropicUsesAdaptiveThinking(modelID string) bool {
+	major, minor, ok := parseClaudeVersion(modelID)
+	if !ok {
+		return false
+	}
+	return major > 4 || (major == 4 && minor >= 6)
+}
+
+type anthropicOffShape int
+
+const (
+	anthropicOffOmit anthropicOffShape = iota
+	anthropicOffDisabled
+	anthropicOffBetweenTools
+	anthropicOffLowEffort
+)
+
+func anthropicOffThinking(modelID string) anthropicOffShape {
+	major, minor, ok := parseClaudeVersion(modelID)
+	if !ok || major < 4 || (major == 4 && minor < 6) {
+		return anthropicOffOmit
+	}
+	if major == 4 {
+		return anthropicOffDisabled
+	}
+	if major == 5 && strings.Contains(strings.ToLower(modelID), "sonnet") {
+		if minor == 0 {
+			return anthropicOffDisabled
+		}
+		if minor == 5 {
+			return anthropicOffBetweenTools
+		}
+	}
+	return anthropicOffLowEffort
+}
+
+func anthropicBudgetFor(maxTokens int, level string) int {
+	var cap int
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "low":
+		cap = 8192
+	case "medium":
+		cap = 32768
+	case "high":
+		cap = minInt(maxTokens, 65536)
+	case "xhigh", "max", "ultra":
+		cap = maxTokens
+	default:
+		return 0
+	}
+	clamped := minInt(cap, maxTokens)
+	if clamped >= maxTokens && maxTokens > 1 {
+		return maxTokens - 1
+	}
+	return clamped
+}
+
+func anthropicEffort(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "medium":
+		return "medium"
+	case "high":
+		return "high"
+	case "xhigh", "max", "ultra":
+		return "max"
+	default:
+		return "low"
+	}
+}
+
+// anthropicThinkingConfig returns the `thinking` object and optional
+// `output_config` for a request. It mirrors ThinkingRuleResolver and
+// AnthropicProvider.offThinking in the official app.
+func anthropicThinkingConfig(modelID string, supportsReasoning bool, level string, maxTokens int) (map[string]any, map[string]any) {
+	if thinkingEnabled(level) && supportsReasoning {
+		if anthropicUsesAdaptiveThinking(modelID) {
+			return map[string]any{"type": "adaptive", "display": "summarized"},
+				map[string]any{"effort": anthropicEffort(level)}
+		}
+		budget := anthropicBudgetFor(maxTokens, level)
+		if budget > 0 {
+			return map[string]any{"type": "enabled", "budget_tokens": budget}, nil
+		}
+		return nil, nil
+	}
+	switch anthropicOffThinking(modelID) {
+	case anthropicOffDisabled:
+		return map[string]any{"type": "disabled"}, nil
+	case anthropicOffBetweenTools:
+		return map[string]any{"type": "between_tools"}, nil
+	case anthropicOffLowEffort:
+		return map[string]any{"type": "adaptive", "display": "summarized"},
+			map[string]any{"effort": "low"}
+	default:
+		return nil, nil
+	}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

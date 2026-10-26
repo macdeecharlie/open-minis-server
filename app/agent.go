@@ -12,11 +12,12 @@ import (
 )
 
 type Run struct {
-	ID       string
-	Session  string
-	Headless bool
-	ctx      context.Context
-	cancel   context.CancelFunc
+	ID        string
+	Session   string
+	Headless  bool
+	Scheduled bool
+	ctx       context.Context
+	cancel    context.CancelFunc
 
 	pmu     sync.Mutex
 	pending map[string]chan ToolResult
@@ -426,9 +427,12 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	startingAttempt := 0
 	emptyNudges := 0
 	inLoopCompactions := 0
-	lastToolSignature := ""
-	repeatedToolCalls := 0
 	personaReminderAt := 0
+	loop := newToolLoopDetector()
+	loop.hydrate(messages)
+	if run.Scheduled {
+		loop.exemptNextCall()
+	}
 	for turn := 0; turn < maxTurns; turn++ {
 		if run.ctx.Err() != nil {
 			return
@@ -696,30 +700,6 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			}
 		}
 		hasTool = len(orderedIDs) > 0
-		if len(orderedIDs) == 1 {
-			call := calls[orderedIDs[0]]
-			sig := call.part.Name + "|" + string(call.part.Args)
-			if sig == lastToolSignature {
-				repeatedToolCalls++
-			} else {
-				lastToolSignature = sig
-				repeatedToolCalls = 0
-			}
-			// Match the official detector's magnitude: the 10th identical call
-			// warns, the 20th is the critical stop. Polling with delay is
-			// explicitly allowed by the prompt, so a low cutoff would break
-			// legitimate status checks.
-			if repeatedToolCalls == 9 {
-				run.emit("info", map[string]any{"text": "The model is repeating the same tool call (" + call.part.Name + "). It will be stopped if the loop continues."})
-			}
-			if repeatedToolCalls >= 19 {
-				run.emit("error", map[string]any{"message": "tool loop detected: " + call.part.Name + " was called with identical arguments twenty times"})
-				return
-			}
-		} else {
-			lastToolSignature = ""
-			repeatedToolCalls = 0
-		}
 		stop := pres.StopReason
 		if hasTool {
 			stop = "tool_use"
@@ -773,6 +753,28 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			call := calls[id]
 			name := call.part.Name
 			args := call.part.Args
+			if pre := loop.check(name, args); pre.Level == "critical" {
+				res := ToolResult{ID: id, Name: name, Title: "Loop blocked", Executor: "server", IsError: true, Content: pre.Message}
+				loop.record(name, args, "", pre.Message)
+				run.emit("tool_result", res)
+				results = append(results, res)
+				continue
+			}
+			if msg := preflightToolCall(name, args, tools); msg != "" {
+				res := ToolResult{ID: id, Name: name, Title: "Invalid tool call", Executor: "server", IsError: true, Content: msg}
+				loop.record(name, args, "", msg)
+				run.emit("tool_result", res)
+				results = append(results, res)
+				continue
+			}
+			if !toolIsKnown(name, tools) {
+				msg := "Unknown tool: " + name
+				res := ToolResult{ID: id, Name: name, Title: "Unknown tool", Executor: "server", IsError: true, Content: msg}
+				loop.record(name, args, "", msg)
+				run.emit("tool_result", res)
+				results = append(results, res)
+				continue
+			}
 			if serverToolNames[name] && !clientOwnedCall(name, args) {
 				run.emit("tool_running", map[string]any{"id": id, "name": name})
 				res := s.executeTool(run.ctx, sb, name, args, func(line string) {
@@ -780,6 +782,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				})
 				res.ID = id
 				res.Executor = "server"
+				recordLoopOutcome(loop, tools, name, args, &res)
 				offloadToolResult(sb, &res, contextTight)
 				run.emit("tool_result", res)
 				results = append(results, res)
@@ -818,6 +821,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			}
 			res.ID = id
 			res.Executor = "client"
+			recordLoopOutcome(loop, tools, name, args, &res)
 			offloadToolResult(sb, &res, contextTight)
 			run.emit("tool_result", res)
 			results = append(results, res)
@@ -852,6 +856,57 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 	run.emit("error", map[string]any{"message": fmt.Sprintf("maximum agent turns reached (%d)", maxTurns)})
 	run.emit("done", map[string]any{"stop_reason": "max_turns", "turns": maxTurns})
+}
+
+func toolIsKnown(name string, tools []ToolDef) bool {
+	for _, t := range tools {
+		if t.Function.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func toolDeclaresTitle(name string, tools []ToolDef) bool {
+	for _, t := range tools {
+		if t.Function.Name != name {
+			continue
+		}
+		var schema struct {
+			Properties map[string]any `json:"properties"`
+		}
+		if json.Unmarshal(t.Function.Parameters, &schema) != nil {
+			return false
+		}
+		_, ok := schema.Properties["tool_title"]
+		return ok
+	}
+	return false
+}
+
+func appendToolNote(content, note string) string {
+	if content == "" {
+		return note
+	}
+	if strings.Contains(content, note) {
+		return content
+	}
+	return content + "\n\n" + note
+}
+
+// recordLoopOutcome records a completed tool call and attaches the same
+// warnings the official detector appends to the model-facing result.
+func recordLoopOutcome(loop *toolLoopDetector, tools []ToolDef, name string, args json.RawMessage, res *ToolResult) {
+	result, errMsg := res.Content, ""
+	if res.IsError {
+		result, errMsg = "", res.Content
+	}
+	if lr := loop.record(name, args, result, errMsg); lr.Message != "" {
+		res.Content = appendToolNote(res.Content, lr.Message)
+	}
+	if reminder := loop.recordToolTitle(args, toolDeclaresTitle(name, tools)); reminder != "" {
+		res.Content = appendToolNote(res.Content, reminder)
+	}
 }
 
 func historyHasPersonaReminder(messages []WireMessage) bool {

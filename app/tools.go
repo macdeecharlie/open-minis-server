@@ -59,6 +59,11 @@ var deviceCLIs = map[string]bool{
 	"android-weather":      true,
 	"minis-open":           true,
 	"minis-scheduled":      true,
+	// The app owns its real settings and model catalog. Routing these to the
+	// paired device keeps the full official CLI surface available (appearance,
+	// providers, media output) instead of the server's reduced headless copy.
+	"minis-config":    true,
+	"minis-model-use": true,
 }
 
 func clientOwnedCall(name string, args json.RawMessage) bool {

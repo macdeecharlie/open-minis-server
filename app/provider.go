@@ -220,13 +220,14 @@ var providerIdleTimeout = 10 * time.Minute
 type idleReader struct {
 	r        io.ReadCloser
 	cancel   context.CancelFunc
+	idle     time.Duration
 	timer    *time.Timer
 	mu       sync.Mutex
 	timedOut bool
 }
 
 func newIdleReader(r io.ReadCloser, cancel context.CancelFunc, idle time.Duration) *idleReader {
-	ir := &idleReader{r: r, cancel: cancel}
+	ir := &idleReader{r: r, cancel: cancel, idle: idle}
 	ir.timer = time.AfterFunc(idle, func() {
 		ir.mu.Lock()
 		ir.timedOut = true
@@ -239,7 +240,7 @@ func newIdleReader(r io.ReadCloser, cancel context.CancelFunc, idle time.Duratio
 func (r *idleReader) Read(p []byte) (int, error) {
 	n, err := r.r.Read(p)
 	if n > 0 {
-		r.timer.Reset(providerIdleTimeout)
+		r.timer.Reset(r.idle)
 	}
 	return n, err
 }

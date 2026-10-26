@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -27,7 +28,10 @@ type Provider struct {
 	APIKey    string            `json:"api_key,omitempty"`
 	APIKeyEnv string            `json:"api_key_env,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
-	Models    []Model           `json:"models"`
+	// IdleTimeoutSec overrides the provider stream watchdog. 0 keeps the
+	// 10-minute default used by the official app's default setting.
+	IdleTimeoutSec int     `json:"idle_timeout_seconds,omitempty"`
+	Models         []Model `json:"models"`
 }
 
 type Model struct {
@@ -36,6 +40,7 @@ type Model struct {
 	ContextWindow     int      `json:"context_window,omitempty"`
 	MaxOutputTokens   int      `json:"max_output_tokens,omitempty"`
 	SupportsReasoning bool     `json:"supports_reasoning,omitempty"`
+	ReasoningEfforts  []string `json:"reasoning_efforts,omitempty"`
 	InputModalities   []string `json:"input_modalities,omitempty"`
 }
 
@@ -159,6 +164,9 @@ func validateConfig(cfg *Config) (*Config, error) {
 		}
 		if p.Kind != "mock" && p.BaseURL == "" {
 			return nil, fmt.Errorf("provider %q: base_url is required", p.ID)
+		}
+		if p.IdleTimeoutSec < 0 {
+			return nil, fmt.Errorf("provider %q: idle_timeout_seconds must be positive", p.ID)
 		}
 		if (p.Kind == "openai" || p.Kind == "openai-responses") && p.APIKey == "" && len(p.Headers) == 0 {
 			return nil, fmt.Errorf("provider %q: api_key is required", p.ID)
@@ -293,3 +301,12 @@ const ExampleConfig = `{
     "max_output_bytes": 204800
   }
 }`
+
+// idleTimeout returns the provider's configured stream watchdog, or the
+// official app's 10-minute default.
+func (p *Provider) idleTimeout() time.Duration {
+	if p != nil && p.IdleTimeoutSec > 0 {
+		return time.Duration(p.IdleTimeoutSec) * time.Second
+	}
+	return providerIdleTimeout
+}

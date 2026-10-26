@@ -61,7 +61,7 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
 	defer idleBody.Close()
 
 	var usage Usage
@@ -147,7 +147,7 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
 		}
 		return ProviderResult{}, err
 	}

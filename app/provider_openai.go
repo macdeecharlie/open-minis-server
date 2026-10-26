@@ -39,7 +39,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		body["tools"] = req.Tools
 		body["tool_choice"] = "auto"
 	}
-	if effort := openAIReasoningEffort(req.Model, req.Thinking); effort != "" {
+	if effort := openAIReasoningEffortFor(p.cfg.BaseURL, req.Model, req.Thinking); effort != "" {
 		body["reasoning_effort"] = effort
 	}
 	body["stream_options"] = map[string]any{"include_usage": true}
@@ -57,7 +57,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
 	defer idleBody.Close()
 
 	type callState struct {
@@ -204,7 +204,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
 		}
 		return ProviderResult{}, err
 	}
@@ -371,19 +371,91 @@ func openAIUsesCompletionTokens(baseURL, modelID string) bool {
 // max, ultra) are UI intent, not API values; clamp them rather than sending a
 // value the provider rejects.
 func openAIReasoningEffort(model *Model, thinking string) string {
-	if !model.SupportsReasoning {
+	return openAIReasoningEffortFor("", model, thinking)
+}
+
+// openAIReasoningEffortFor mirrors the official OpenAI path, including the
+// explicit OFF tiers. Omitting the field is not "off" on GPT-5.x, so official
+// OpenAI gets "none"; Volcengine Ark's smallest tier is "minimal".
+func openAIReasoningEffortFor(baseURL string, model *Model, thinking string) string {
+	if model == nil || !model.SupportsReasoning {
 		return ""
 	}
-	switch strings.ToLower(strings.TrimSpace(thinking)) {
-	case "", "off":
-		return ""
+	base := strings.ToLower(baseURL)
+	id := strings.ToLower(model.ID)
+	level := strings.ToLower(strings.TrimSpace(thinking))
+	ladder := []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+	if level == "" || level == "off" {
+		off := ""
+		switch {
+		case strings.HasPrefix(base, "https://api.openai.com"):
+			off = "none"
+		case strings.Contains(base, "volces") || strings.Contains(base, "ark.") ||
+			strings.HasPrefix(id, "seed-") || strings.Contains(id, "doubao"):
+			off = "minimal"
+		}
+		if off == "" {
+			return ""
+		}
+		if len(model.ReasoningEfforts) > 0 && !containsStringFold(model.ReasoningEfforts, off) {
+			// The documented off tier may not be in this model's catalog; use
+			// the lowest declared tier so the request is accepted.
+			for _, tier := range ladder {
+				if containsStringFold(model.ReasoningEfforts, tier) {
+					return tier
+				}
+			}
+			return ""
+		}
+		return off
+	}
+	var effort string
+	switch level {
 	case "minimal", "low", "medium", "high":
-		return strings.ToLower(thinking)
-	case "xhigh", "max", "ultra":
-		return "high"
+		effort = level
+	case "xhigh":
+		effort = "xhigh"
+	case "max", "ultra":
+		effort = "max"
 	default:
-		return "medium"
+		effort = "medium"
 	}
+	if effort == "xhigh" && (strings.Contains(id, "mimo") || strings.Contains(id, "agnes")) {
+		effort = "high"
+	}
+	if len(model.ReasoningEfforts) == 0 || containsStringFold(model.ReasoningEfforts, effort) {
+		return effort
+	}
+	idx := ladderIndex(ladder, effort)
+	for i := idx; i >= 0; i-- {
+		if containsStringFold(model.ReasoningEfforts, ladder[i]) {
+			return ladder[i]
+		}
+	}
+	for i := idx + 1; i < len(ladder); i++ {
+		if containsStringFold(model.ReasoningEfforts, ladder[i]) {
+			return ladder[i]
+		}
+	}
+	return effort
+}
+
+func containsStringFold(list []string, want string) bool {
+	for _, v := range list {
+		if strings.EqualFold(v, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func ladderIndex(ladder []string, v string) int {
+	for i, s := range ladder {
+		if s == v {
+			return i
+		}
+	}
+	return -1
 }
 
 func modelSupportsImages(model *Model) bool {

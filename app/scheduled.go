@@ -293,8 +293,24 @@ func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, st
 		}
 		sid = fmt.Sprintf("sched_%s_%d", prefix, time.Now().Unix())
 	}
-	if _, err := s.store.EnsureSession(sid, t.Model); err != nil {
+	meta, err := s.store.EnsureSession(sid, t.Model)
+	if err != nil {
 		return sid, "", err
+	}
+	if meta.Title == "" {
+		title := strings.TrimSpace(t.Label)
+		if title == "" {
+			title = strings.TrimSpace(t.Prompt)
+			if r := []rune(title); len(r) > 40 {
+				title = string(r[:40])
+			}
+		}
+		if title == "" {
+			title = "Scheduled task"
+		}
+		if err := s.store.UpdateSessionTitle(sid, title); err != nil {
+			return sid, "", err
+		}
 	}
 	stored, err := s.store.Messages(sid)
 	if err != nil {
@@ -319,6 +335,7 @@ func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, st
 	}
 	run := newRun(ctx, req.RunID)
 	run.Headless = true
+	run.Scheduled = true
 	go s.runAgent(req, run)
 	var finalText strings.Builder
 	var runErr error

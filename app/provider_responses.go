@@ -71,8 +71,12 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		body["tools"] = tools
 		body["tool_choice"] = "auto"
 	}
-	if effort := openAIReasoningEffort(req.Model, req.Thinking); effort != "" {
-		body["reasoning"] = map[string]any{"effort": effort, "summary": "auto"}
+	if effort := openAIReasoningEffortFor(p.cfg.BaseURL, req.Model, req.Thinking); effort != "" {
+		reasoning := map[string]any{"effort": effort}
+		if thinkingEnabled(req.Thinking) {
+			reasoning["summary"] = "auto"
+		}
+		body["reasoning"] = reasoning
 	}
 	if key := responsesPromptCacheKey(req.Messages); key != "" {
 		body["prompt_cache_key"] = key
@@ -90,7 +94,7 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, providerIdleTimeout)
+	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
 	defer idleBody.Close()
 
 	type callState struct {
@@ -245,7 +249,7 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", providerIdleTimeout)
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
 		}
 		return ProviderResult{}, err
 	}
