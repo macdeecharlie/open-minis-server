@@ -22,7 +22,7 @@ type Config struct {
 
 type Provider struct {
 	ID        string            `json:"id"`
-	Kind      string            `json:"kind"` // openai | anthropic | mock
+	Kind      string            `json:"kind"` // openai | openai-responses | anthropic | gemini | mock
 	BaseURL   string            `json:"base_url"`
 	APIKey    string            `json:"api_key,omitempty"`
 	APIKeyEnv string            `json:"api_key_env,omitempty"`

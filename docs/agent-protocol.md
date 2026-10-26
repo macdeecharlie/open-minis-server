@@ -104,7 +104,6 @@ data: {"text":"Hello"}
 | `usage` | token usage object |
 | `compacted` | `summary`, `messages`, `tokens`, `window`, `compaction` |
 | `steered` | `client_id`, `text` |
-| `steered` | `client_id`, `text` |
 | `info` | `text` (visible notice: fallback, truncated images, loop warning) |
 | `truncated` | `skipped` (only if a replay window was exceeded) |
 | `done` | `stop_reason`, `turns` |
