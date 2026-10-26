@@ -3,20 +3,20 @@ path,lines,role
 .gitignore,18,server/deployment file
 README.md,216,server/deployment file
 app/admin.go,183,admin config endpoints
-app/agent.go,873,"agent loop, retries, fallback, tool dispatch, replay/steer"
+app/agent.go,875,"agent loop, retries, fallback, tool dispatch, replay/steer"
 app/api_cli.go,595,minis-* CLI API
 app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
 app/api_scheduled.go,53,scheduled task API
 app/api_terminal.go,91,terminal API proxy
-app/app_test.go,1967,test suite
+app/app_test.go,2027,test suite
 app/cli.go,666,minis-* CLI implementations
 app/config.go,295,configuration and validation
 app/context.go,523,"context estimator, compaction, offload, image budget, tool-pair repair"
 app/go.mod,5,server/deployment file
 app/go.sum,2,server/deployment file
 app/main.go,88,entrypoint and role dispatch
-app/open-minis-server,51180,server/deployment file
+app/open-minis-server,51237,server/deployment file
 app/prompt.go,174,server-owned prompt assembly
 app/prompt_base.txt,90,server/deployment file
 app/prompt_browser.txt,2,server/deployment file
@@ -29,6 +29,7 @@ app/provider_anthropic.go,352,"Anthropic wire, prompt cache"
 app/provider_gemini.go,237,"Gemini wire, thought signatures, audio"
 app/provider_mock.go,129,offline test provider
 app/provider_openai.go,401,OpenAI-compatible wire
+app/provider_responses.go,342,server/deployment file
 app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
 app/sandbox_agent.go,507,sandbox container API
 app/sandbox_remote.go,299,server to sandbox client
