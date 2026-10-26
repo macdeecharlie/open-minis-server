@@ -261,6 +261,8 @@ func (s *Server) providerFor(p *Provider) ProviderClient {
 		return &anthropicProvider{cfg: p, http: s.http}
 	case "gemini":
 		return &geminiProvider{cfg: p, http: s.http}
+	case "openai-responses":
+		return &responsesProvider{cfg: p, http: s.http}
 	case "mock":
 		return &mockProvider{}
 	default:

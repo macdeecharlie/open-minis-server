@@ -1965,3 +1965,63 @@ func TestTerminalReattach(t *testing.T) {
 	}
 	cresp.Body.Close()
 }
+
+func TestResponsesProviderStreamAndInput(t *testing.T) {
+	var body map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/v1/responses") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello \"}\n\n")
+		io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"shell_execute\"}}\n\n")
+		io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\"{\\\"command\\\":\\\"echo hi\\\"}\"}\n\n")
+		io.WriteString(w, "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"shell_execute\",\"arguments\":\"{\\\"command\\\":\\\"echo hi\\\"}\"}}\n\n")
+		io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"input_tokens_details\":{\"cached_tokens\":3},\"output_tokens_details\":{\"reasoning_tokens\":2}}}}\n\n")
+	}))
+	defer upstream.Close()
+
+	p := &responsesProvider{cfg: &Provider{ID: "oa", Kind: "openai-responses", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	var text strings.Builder
+	var call ProviderEvent
+	res, err := p.Stream(context.Background(), ProviderRequest{
+		Model:  &Model{ID: "gpt-5.6", SupportsReasoning: true, InputModalities: []string{"text", "image"}},
+		System: "be brief",
+		Messages: []WireMessage{
+			{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}},
+			{Role: "assistant", Parts: []WirePart{{Type: "tool_use", ID: "call_0", Name: "file_read", Args: json.RawMessage(`{"path":"/x"}`)}}},
+			{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: "call_0", Name: "file_read", Content: "data", Mime: "image/png", Data: "aW1n"}}},
+		},
+		Tools:     []ToolDef{{Type: "function", Function: ToolFunction{Name: "shell_execute", Parameters: json.RawMessage(`{"type":"object"}`)}}},
+		Thinking:  "high",
+		MaxTokens: 100,
+	}, func(ev ProviderEvent) error {
+		if ev.Kind == "text" {
+			text.WriteString(ev.Text)
+		}
+		if ev.Kind == "tool_call" {
+			call = ev
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text.String() != "Hello " || call.ID != "call_1" || call.Name != "shell_execute" || !strings.Contains(call.Args, "echo hi") {
+		t.Fatalf("text=%q call=%+v", text.String(), call)
+	}
+	if res.StopReason != "tool_use" || res.Usage.InputTokens != 10 || res.Usage.CacheReadInputTokens != 3 || res.Usage.ReasoningTokens != 2 {
+		t.Fatalf("result=%+v", res)
+	}
+	if body["instructions"] != "be brief" || body["max_output_tokens"] != float64(100) {
+		t.Fatalf("body = %+v", body)
+	}
+	blob := fmt.Sprint(body["input"])
+	if !strings.Contains(blob, "function_call") || !strings.Contains(blob, "function_call_output") || !strings.Contains(blob, "input_image") {
+		t.Fatalf("input mapping = %s", blob)
+	}
+	if !strings.Contains(fmt.Sprint(body["tools"]), "shell_execute") {
+		t.Fatalf("tools = %v", body["tools"])
+	}
+}

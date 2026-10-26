@@ -32,7 +32,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if provider.Kind == "anthropic" || provider.Kind == "gemini" {
+	if provider.Kind == "anthropic" || provider.Kind == "gemini" || provider.Kind == "openai-responses" {
 		s.handleAuxiliaryOpenAI(w, r, provider, meta.Model, body)
 		return
 	}
