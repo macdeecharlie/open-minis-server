@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -224,16 +226,26 @@ func (s *Store) Messages(id string) ([]StoredMessage, error) {
 	}
 	defer f.Close()
 	var out []StoredMessage
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 32*1024*1024)
-	for sc.Scan() {
-		var m StoredMessage
-		if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
-			return nil, fmt.Errorf("parse message in %s: %w", id, err)
+	// bufio.Scanner caps a single line at 32 MB; image-bearing tool results can
+	// exceed that. Read lines directly so the session remains readable.
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, rerr := reader.ReadBytes('\n')
+		if len(bytes.TrimSpace(line)) > 0 {
+			var m StoredMessage
+			if err := json.Unmarshal(line, &m); err != nil {
+				return nil, fmt.Errorf("parse message in %s: %w", id, err)
+			}
+			out = append(out, m)
 		}
-		out = append(out, m)
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return nil, rerr
+		}
 	}
-	return out, sc.Err()
+	return out, nil
 }
 
 func (s *Store) ListSessions() []SessionMeta {

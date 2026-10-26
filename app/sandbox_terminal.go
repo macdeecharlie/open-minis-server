@@ -25,16 +25,17 @@ type terminal struct {
 	id      string
 	session string
 
-	mu    sync.Mutex
-	ptmx  *os.File
-	cmd   *exec.Cmd
-	cols  int
-	rows  int
-	dead  bool
-	wake  chan struct{}
-	outMu sync.Mutex
-	out   []byte // scrollback; outOffset is the absolute offset of out[0]
-	outAt int64
+	mu     sync.Mutex
+	ptmx   *os.File
+	cmd    *exec.Cmd
+	cols   int
+	rows   int
+	dead   bool
+	wake   chan struct{}
+	outMu  sync.Mutex
+	out    []byte // scrollback; outAt is the absolute offset of out[0]
+	outAt  int64
+	onExit func()
 }
 
 type terminalManager struct {
@@ -107,9 +108,22 @@ func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, er
 		rows:    rows,
 		wake:    make(chan struct{}, 1),
 	}
+	// A new terminal for the same session replaces an abandoned shell from a
+	// previous app process instead of leaking it.
 	m.mu.Lock()
+	var old []*terminal
+	for id, existing := range m.terms {
+		if existing.session == sessionID {
+			old = append(old, existing)
+			delete(m.terms, id)
+		}
+	}
 	m.terms[t.id] = t
+	t.onExit = func() { m.remove(t.id) }
 	m.mu.Unlock()
+	for _, existing := range old {
+		existing.close()
+	}
 	go t.readLoop()
 	return t, nil
 }
@@ -157,7 +171,12 @@ func (t *terminal) readLoop() {
 		if err != nil {
 			t.mu.Lock()
 			t.dead = true
+			onExit := t.onExit
 			t.mu.Unlock()
+			t.close()
+			if onExit != nil {
+				onExit()
+			}
 			t.signal()
 			return
 		}
@@ -184,11 +203,12 @@ func (t *terminal) close() {
 
 func (t *terminal) write(data []byte) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.ptmx == nil {
+	ptmx := t.ptmx
+	t.mu.Unlock()
+	if ptmx == nil {
 		return fmt.Errorf("terminal closed")
 	}
-	_, err := t.ptmx.Write(data)
+	_, err := ptmx.Write(data)
 	return err
 }
 
@@ -205,18 +225,19 @@ func (t *terminal) resize(cols, rows int) error {
 	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
-func (t *terminal) snapshot(after int64) (chunk []byte, next int64, closed bool) {
+func (t *terminal) snapshot(after int64) (chunk []byte, start, next int64, closed bool) {
 	t.outMu.Lock()
 	defer t.outMu.Unlock()
 	if after < t.outAt {
 		after = t.outAt
 	}
-	start := after - t.outAt
-	if start < 0 {
-		start = 0
+	start = after
+	idx := after - t.outAt
+	if idx < 0 {
+		idx = 0
 	}
-	if start < int64(len(t.out)) {
-		chunk = append([]byte(nil), t.out[start:]...)
+	if idx < int64(len(t.out)) {
+		chunk = append([]byte(nil), t.out[idx:]...)
 	}
 	next = t.outAt + int64(len(t.out))
 	t.mu.Lock()
@@ -244,15 +265,21 @@ func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, te
 		flusher.Flush()
 		return true
 	}
-	if !writeEvent("ready", map[string]any{"id": term.id, "session_id": term.session, "cols": term.cols, "rows": term.rows, "offset": after}) {
+	term.mu.Lock()
+	cols, rows := term.cols, term.rows
+	term.mu.Unlock()
+	if !writeEvent("ready", map[string]any{"id": term.id, "session_id": term.session, "cols": cols, "rows": rows, "offset": after}) {
 		return
 	}
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
-		chunk, next, closed := term.snapshot(after)
+		chunk, start, next, closed := term.snapshot(after)
 		if len(chunk) > 0 {
-			if !writeEvent("output", map[string]any{"offset": after, "data": base64.StdEncoding.EncodeToString(chunk)}) {
+			// start is the actual first buffered byte; when the caller's offset
+			// fell behind a trimmed scrollback, labeling the chunk with the
+			// stale `after` would make the client's byte count drift.
+			if !writeEvent("output", map[string]any{"offset": start, "data": base64.StdEncoding.EncodeToString(chunk)}) {
 				return
 			}
 			after = next

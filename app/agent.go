@@ -292,6 +292,9 @@ func offloadToolResult(sb ToolSandbox, res *ToolResult, aggressive bool) {
 
 func (s *Server) runAgent(req RunRequest, run *Run) {
 	defer run.close()
+	if req.Headless {
+		run.Headless = true
+	}
 
 	sessionID := strings.TrimSpace(req.SessionID)
 	if !sessionIDPattern.MatchString(sessionID) {
@@ -442,6 +445,10 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		if steers := run.takeSteers(); len(steers) > 0 {
 			messages = append(messages, steers...)
 			messages = repairToolPairing(messages)
+		}
+		if budgeted, dropped := applyImageBudget(messages); dropped > 0 {
+			messages = budgeted
+			run.emit("info", map[string]any{"text": fmt.Sprintf("%d older image(s) were omitted to stay within the request image budget.", dropped)})
 		}
 		helper := req.Prompt != nil && req.Prompt.Helper
 		turnTools := tools

@@ -59,9 +59,18 @@ func estimateWireTokens(text string) int {
 }
 
 func estimateImageTokens(data string) int {
-	// The provider receives the base64 string; base64 characters are mostly
-	// ASCII punctuation/letters and average roughly 4 per token.
-	return utf8.RuneCountInString(data) / 4
+	// Providers tokenize an image by pixel grid, not by its base64 length.
+	// Base64/4 over-read a 500 KB screenshot by ~100x, which falsely trips
+	// compaction on a single-turn session. Use a bounded byte proxy: roughly
+	// 1k tokens per 100 KB of encoded image, with the provider's floor/ceiling.
+	n := utf8.RuneCountInString(data) / 100
+	if n < 85 {
+		n = 85
+	}
+	if n > 4000 {
+		n = 4000
+	}
+	return n
 }
 
 func estimatePartTokens(p WirePart) int {
@@ -324,6 +333,34 @@ func applyStoredCompaction(messages []WireMessage, summary, anchor string) ([]Wi
 	return messages, false
 }
 
+// compactSingleTurn folds the tool/assistant middle of one long user turn
+// behind a summary while keeping the original user prompt. The normal split
+// path needs a later user text message; the first turn, helper and scheduled
+// runs often have only one, and a failing request is worse than a summary.
+func compactSingleTurn(messages []WireMessage, summary string) ([]WireMessage, bool) {
+	head := -1
+	for i, m := range messages {
+		if m.Role != "user" {
+			continue
+		}
+		for _, p := range m.Parts {
+			if p.Type == "text" && strings.TrimSpace(p.Text) != "" {
+				head = i
+				break
+			}
+		}
+		if head >= 0 {
+			break
+		}
+	}
+	if head < 0 || head+1 >= len(messages) {
+		return messages, false
+	}
+	out := append([]WireMessage(nil), messages[:head+1]...)
+	out = append(out, WireMessage{Role: "user", Parts: []WirePart{{Type: "text", Text: compactSummaryText(summary)}}})
+	return out, true
+}
+
 // maybeCompact checks the outbound request and summarizes older history when
 // it crosses the window's compact line. It returns the messages to send and
 // whether a compaction happened.
@@ -348,13 +385,37 @@ func (s *Server) maybeCompact(run *Run, messages []WireMessage, system string, t
 	}
 	if split <= 0 {
 		// One single enormous turn: drop oversized tool-result bodies in place
-		// rather than sending a request that cannot fit.
+		// first, then summarize the assistant/tool middle while keeping the
+		// original user prompt. This is the normal first-turn/helper/scheduled
+		// shape, where there is no later user turn to anchor a split.
 		trimmed := trimLargeToolResults(messages, 4000)
 		if estimatedRequestTokens(system, trimmed, tools) < window {
 			run.emit("info", map[string]any{"text": "Context was over the model window; large tool results were shortened."})
 			return trimmed, false, nil
 		}
-		return messages, false, fmt.Errorf("context is full and nothing before the current turn can be compacted")
+		calls := 0
+		summary, err := s.summarizeMessages(run.ctx, provider, model, trimmed, "", 0, &calls)
+		if err != nil {
+			return messages, false, fmt.Errorf("context compaction failed: %w", err)
+		}
+		whole, ok := compactSingleTurn(trimmed, summary)
+		if !ok {
+			return messages, false, fmt.Errorf("context is full and nothing before the current turn can be compacted")
+		}
+		anchor := ""
+		if len(trimmed) > 0 {
+			anchor = trimmed[len(trimmed)-1].ID
+		}
+		if anchor != "" {
+			_ = s.store.SetSummary(run.Session, summary, anchor)
+		}
+		*compactions++
+		run.emit("compacted", map[string]any{
+			"summary": summary, "messages": len(messages) - len(whole) + 1,
+			"tokens": estimatedRequestTokens(system, whole, tools), "window": window,
+			"compaction": *compactions,
+		})
+		return whole, true, nil
 	}
 	calls := 0
 	summary, err := s.summarizeMessages(run.ctx, provider, model, messages[:split], "", 0, &calls)

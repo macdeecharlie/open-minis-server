@@ -20,10 +20,27 @@ type responsesProvider struct {
 
 func responsesEndpoint(base string) string {
 	b := strings.TrimSuffix(strings.TrimSpace(base), "/")
+	if strings.HasSuffix(b, "/responses") {
+		return b
+	}
 	if strings.HasSuffix(b, "/v1") {
 		return b + "/responses"
 	}
 	return b + "/v1/responses"
+}
+
+func responsesUsage(input, output, cached, reasoning int) Usage {
+	// OpenAI's input_tokens includes cached input. The app's Usage model keeps
+	// them separate and uses the total for context pressure.
+	nonCached := input - cached
+	if nonCached < 0 {
+		nonCached = 0
+	}
+	return Usage{
+		InputTokens: nonCached, OutputTokens: output,
+		CacheReadInputTokens: cached, ReasoningTokens: reasoning,
+		LatestContextTokens: input,
+	}
 }
 
 func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
@@ -124,6 +141,9 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 				Message string `json:"message"`
 			} `json:"error"`
 		}
+		if strings.TrimSpace(string(data)) == "[DONE]" {
+			return nil
+		}
 		if err := json.Unmarshal(data, &ev); err != nil {
 			if len(strings.TrimSpace(string(data))) <= 2 {
 				return nil
@@ -170,19 +190,23 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		case "response.completed":
 			sawTerminal = true
 			u := ev.Response.Usage
-			usage = Usage{
-				InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
-				CacheReadInputTokens: u.InputTokensDetails.CachedTokens,
-				ReasoningTokens:      u.OutputTokensDetails.ReasoningTokens,
-			}
-			usage.LatestContextTokens = usage.InputTokens + usage.CacheReadInputTokens
+			usage = responsesUsage(u.InputTokens, u.OutputTokens, u.InputTokensDetails.CachedTokens, u.OutputTokensDetails.ReasoningTokens)
 			stop = "end_turn"
 			return nil
 		case "response.incomplete":
 			sawTerminal = true
-			if ev.Response.IncompleteDetails != nil && ev.Response.IncompleteDetails.Reason == "max_output_tokens" {
+			u := ev.Response.Usage
+			usage = responsesUsage(u.InputTokens, u.OutputTokens, u.InputTokensDetails.CachedTokens, u.OutputTokensDetails.ReasoningTokens)
+			reason := ""
+			if ev.Response.IncompleteDetails != nil {
+				reason = ev.Response.IncompleteDetails.Reason
+			}
+			switch reason {
+			case "max_output_tokens":
 				stop = "max_tokens"
-			} else {
+			case "content_filter":
+				stop = "refusal"
+			default:
 				stop = "end_turn"
 			}
 			return nil

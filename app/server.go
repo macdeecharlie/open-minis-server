@@ -352,7 +352,7 @@ func (s *Server) handleRunEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleToolResult(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var res ToolResult
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4*1024*1024))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32*1024*1024))
 	if err := dec.Decode(&res); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return

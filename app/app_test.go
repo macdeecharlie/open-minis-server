@@ -1979,6 +1979,7 @@ func TestResponsesProviderStreamAndInput(t *testing.T) {
 		io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\"{\\\"command\\\":\\\"echo hi\\\"}\"}\n\n")
 		io.WriteString(w, "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"shell_execute\",\"arguments\":\"{\\\"command\\\":\\\"echo hi\\\"}\"}}\n\n")
 		io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"input_tokens_details\":{\"cached_tokens\":3},\"output_tokens_details\":{\"reasoning_tokens\":2}}}}\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -2011,7 +2012,7 @@ func TestResponsesProviderStreamAndInput(t *testing.T) {
 	if text.String() != "Hello " || call.ID != "call_1" || call.Name != "shell_execute" || !strings.Contains(call.Args, "echo hi") {
 		t.Fatalf("text=%q call=%+v", text.String(), call)
 	}
-	if res.StopReason != "tool_use" || res.Usage.InputTokens != 10 || res.Usage.CacheReadInputTokens != 3 || res.Usage.ReasoningTokens != 2 {
+	if res.StopReason != "tool_use" || res.Usage.InputTokens != 7 || res.Usage.CacheReadInputTokens != 3 || res.Usage.ReasoningTokens != 2 || res.Usage.LatestContextTokens != 10 {
 		t.Fatalf("result=%+v", res)
 	}
 	if body["instructions"] != "be brief" || body["max_output_tokens"] != float64(100) {
@@ -2058,5 +2059,69 @@ func TestAnthropicUnsignedThinkingEcho(t *testing.T) {
 	}
 	if !anthropicEchoesUnsignedThinking("https://proxy.example/v1", &Model{SupportsReasoning: true}) {
 		t.Fatal("custom Anthropic proxy should echo unsigned thinking")
+	}
+}
+
+func TestImageTokenEstimateIsBounded(t *testing.T) {
+	big := strings.Repeat("A", 2*1024*1024)
+	if n := estimateImageTokens(big); n > 4000 || n < 85 {
+		t.Fatalf("image estimate = %d", n)
+	}
+	if n := estimateImageTokens(""); n != 85 {
+		t.Fatalf("empty image estimate = %d", n)
+	}
+}
+
+func TestCompactionOnSingleTurn(t *testing.T) {
+	cfg := testConfig(t, "mock")
+	store, _ := NewStore(cfg.DataDir)
+	s := NewServer(cfg, store, cfg.DataDir+"/config.json")
+	run := newRun(context.Background(), "run-single-turn")
+	defer run.close()
+	big := strings.Repeat("tool output ", 12000) // ~144k chars
+	messages := []WireMessage{
+		{ID: "u1", Role: "user", Parts: []WirePart{{Type: "text", Text: "do the task"}}},
+	}
+	for i := 0; i < 8; i++ {
+		messages = append(messages,
+			WireMessage{ID: fmt.Sprintf("a%d", i), Role: "assistant", Parts: []WirePart{
+				{Type: "text", Text: strings.Repeat("assistant notes ", 10000)},
+				{Type: "tool_use", ID: fmt.Sprintf("c%d", i), Name: "shell_execute", Args: json.RawMessage(`{"command":"x"}`)},
+			}},
+			WireMessage{ID: fmt.Sprintf("t%d", i), Role: "user", Parts: []WirePart{{Type: "tool_result", ID: fmt.Sprintf("c%d", i), Name: "shell_execute", Content: big}}},
+		)
+	}
+	stub := &stubProvider{reply: "A long single turn was compacted."}
+	compactions := 0
+	out, changed, err := s.maybeCompact(run, messages, "system", nil, 64_000, stub, &Model{ID: "mock-1"}, 0, &compactions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || compactions != 1 {
+		t.Fatalf("changed=%v compactions=%d out=%d", changed, compactions, len(out))
+	}
+	if !strings.Contains(fmt.Sprint(out), "single turn was compacted") {
+		t.Fatal("summary missing from single-turn compaction")
+	}
+	if out[0].ID != "u1" {
+		t.Fatalf("original user prompt was not kept: %+v", out[0])
+	}
+}
+
+func TestResponsesIncompleteContentFilter(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"},\"usage\":{\"input_tokens\":20,\"output_tokens\":1}}}\n\n")
+	}))
+	defer upstream.Close()
+	p := &responsesProvider{cfg: &Provider{ID: "oa", Kind: "openai-responses", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	res, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "gpt-5.6"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "x"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StopReason != "refusal" || res.Usage.LatestContextTokens != 20 {
+		t.Fatalf("result=%+v", res)
 	}
 }

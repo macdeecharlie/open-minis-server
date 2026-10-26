@@ -160,7 +160,7 @@ func validateConfig(cfg *Config) (*Config, error) {
 		if p.Kind != "mock" && p.BaseURL == "" {
 			return nil, fmt.Errorf("provider %q: base_url is required", p.ID)
 		}
-		if p.Kind == "openai" && p.APIKey == "" && len(p.Headers) == 0 {
+		if (p.Kind == "openai" || p.Kind == "openai-responses") && p.APIKey == "" && len(p.Headers) == 0 {
 			return nil, fmt.Errorf("provider %q: api_key is required", p.ID)
 		}
 		if len(p.Models) == 0 {
