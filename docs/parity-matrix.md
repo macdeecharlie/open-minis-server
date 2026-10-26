@@ -113,9 +113,9 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 5. **File browser write UI.** The server API supports list/read/upload/delete/
    rename/mkdir and the browser deletes server files. The File-backed browser
    is still a cache, so upload/rename UI actions are absent; same-size edits
-   now refresh by mtime. Tool images larger than the phone's 500 KB row cap are
-   omitted from the saved transcript (the tool pair survives), so they are
-   unavailable after a reload.
+   now refresh by mtime. Tool images are persisted as media files and reloaded
+   by the transcript builder, so screenshots survive a chat reload without
+   hitting the 500 KB row cap.
 6. **Backup/restore.** `.minisbak` format, crypto, merge and rclone transport
    remain in the app. The workspace is mirrored locally and is included, but
    server-only offloads/global state are not part of the phone archive.
@@ -195,7 +195,8 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - Auxiliary `/v1/chat/completions` translation verified against a native
   Anthropic SSE upstream (streaming and non-streaming).
 - Request image budget and compaction/offload unit-tested.
-- Published: 1.16.14 build 52. 1.16.10 fixed the helper prompt, 1.16.9 added
-  audio/offload sync, 1.16.11 added image tool results/signatures/title-
-  compaction parity, 1.16.12 persisted tool-result images, and 1.16.14
-  reattaches the terminal after a dropped stream.
+- Published: 1.16.16 build 54 (latest release); 1.16.18 build 56 is the source
+  release in CI. 1.16.10 fixed the helper prompt, 1.16.11 added image tool
+  results/signatures/title-compaction parity, 1.16.14 reattached the terminal,
+  and 1.16.18 persists tool images as media files and preserves terminal bytes
+  under backpressure.
