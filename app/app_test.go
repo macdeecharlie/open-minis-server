@@ -2125,3 +2125,15 @@ func TestResponsesIncompleteContentFilter(t *testing.T) {
 		t.Fatalf("result=%+v", res)
 	}
 }
+
+func TestResponsesAutoRouting(t *testing.T) {
+	if !shouldUseResponsesAPI("https://api.openai.com/v1", "gpt-5.6") {
+		t.Fatal("direct GPT-5 should use Responses")
+	}
+	if shouldUseResponsesAPI("https://openrouter.ai/api/v1", "openai/gpt-5.6") {
+		t.Fatal("OpenRouter should keep Chat Completions")
+	}
+	if shouldUseResponsesAPI("https://api.openai.com/v1", "gpt-4o") {
+		t.Fatal("GPT-4o should keep Chat Completions")
+	}
+}

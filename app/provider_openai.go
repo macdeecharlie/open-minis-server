@@ -15,6 +15,9 @@ type openAIProvider struct {
 }
 
 func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
+	if shouldUseResponsesAPI(p.cfg.BaseURL, req.Model.ID) {
+		return (&responsesProvider{cfg: p.cfg, http: p.http}).Stream(ctx, req, emit)
+	}
 	msgs, err := openAIMessages(req.Messages, modelSupportsImages(req.Model), suppressReasoningEcho(p.cfg.BaseURL, req.Model.ID))
 	if err != nil {
 		return ProviderResult{}, err
@@ -398,4 +401,21 @@ func modelSupportsImages(model *Model) bool {
 func suppressReasoningEcho(baseURL, modelID string) bool {
 	hay := strings.ToLower(baseURL + " " + modelID)
 	return strings.Contains(hay, "mistral") || strings.Contains(hay, "cerebras")
+}
+
+// Direct first-party OpenAI models that are native Responses users. Relays
+// such as OpenRouter keep Chat Completions; the official app makes the same
+// split.
+func shouldUseResponsesAPI(baseURL, modelID string) bool {
+	base := strings.ToLower(baseURL)
+	if !strings.Contains(base, "api.openai.com") {
+		return false
+	}
+	id := strings.ToLower(modelID)
+	for _, prefix := range []string{"gpt-5", "gpt-6", "o3", "o4", "codex"} {
+		if strings.HasPrefix(id, prefix) {
+			return true
+		}
+	}
+	return false
 }
