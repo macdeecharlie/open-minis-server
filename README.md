@@ -155,6 +155,7 @@ at startup rather than starting with a silent fallback.
 | `POST` | `/v1/files/rename` | Rename or move a workspace entry. |
 | `POST` | `/v1/files/mkdir` | Create a workspace directory. |
 | `POST` | `/v1/terminal` | Open a PTY in the Debian sandbox (SSE). |
+| `GET` | `/v1/terminal/{id}` | Reattach a live PTY from `?after=N` bytes. |
 | `POST` | `/v1/terminal/{id}/input` | Send terminal input bytes. |
 | `POST` | `/v1/terminal/{id}/resize` | Resize the PTY. |
 | `POST` | `/v1/cli/config/confirm` | Apply a user-approved `minis-config` change. |

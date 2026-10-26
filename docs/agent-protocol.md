@@ -167,6 +167,20 @@ The server appends the message and drains pending steers at the start of the
 next provider turn. A steer that arrives after the run finished is not applied;
 the client should keep its queued prompt for the next run.
 
+## Terminal
+
+`POST /v1/terminal` opens a PTY and streams `ready`, `output` (base64 `data`
+plus absolute byte `offset`) and `exit`. Dropping this response does not close
+the shell. Reattach with:
+
+```http
+GET /v1/terminal/{id}?after=12345
+Accept: text/event-stream
+```
+
+The client tracks the last byte offset and resumes without duplicating output.
+`POST /v1/terminal/{id}/close` ends the shell explicitly.
+
 ## Cancellation
 
 `POST /v1/agent/runs/{id}/cancel` cancels the run and kills its shell process
