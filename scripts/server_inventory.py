@@ -5,7 +5,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXCLUDE_DIRS = {".git", "data", "__pycache__"}
-EXCLUDE_FILES = {"docs/server-code-inventory.csv", "docs/android-code-inventory.csv", "docs/repo-code-inventory.csv"}
+EXCLUDE_FILES = {
+    "docs/server-code-inventory.csv",
+    "docs/android-code-inventory.csv",
+    "docs/repo-code-inventory.csv",
+    "app/open-minis-server",  # ignored local build artifact, not source
+}
 
 ROLES = {
     "agent.go": "agent loop, retries, fallback, tool dispatch, replay/steer",
@@ -70,7 +75,7 @@ def include(path: Path) -> bool:
         return True
     if rel.startswith(("app/", "docker/", "scripts/", "docs/", ".github/")):
         return True
-    return rel in {"README.md", ".gitignore", "config.example.json"}
+    return rel in {"README.md", "LICENSE", ".gitignore", "config.example.json"}
 
 
 def main():
