@@ -73,12 +73,12 @@ The test suite covers:
   - `minis-scheduled list`.
   - `minis-mcp-cli list/tools/call` against a temporary stdio MCP server,
     returning the expected tool output.
-- Release feed lists 1.16.12/build 50; authenticated APK download is 44,853,936
-  bytes, SHA-256 `392072faee4d8ec300dabce954c87be35ef78a6ab0302f1dfc32e8b7441fd091`,
+- Release feed lists 1.16.14/build 52; authenticated APK download is 44,856,172
+  bytes, SHA-256 `e116bed157f82ea9af7ee333cda26f58b6fb70667ef8dd3b78ac7ed93e8a23e9`,
   matching the release `.sha256`.
 - APK signature SHA-256 is the stable
   `ab5b668386da52fdc4476a9eb86a68a10daeacecb8453301ed73c25188d706ee`
-  (DN `CN=Android Debug`), versionCode 50, versionName 1.16.12.
+  (DN `CN=Android Debug`), versionCode 52, versionName 1.16.14.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
 - APK 1.16.7/build 45 through 1.16.12/build 50 have the same stable certificate
   and matching digests.

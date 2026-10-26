@@ -187,8 +187,7 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - Auxiliary `/v1/chat/completions` translation verified against a native
   Anthropic SSE upstream (streaming and non-streaming).
 - Request image budget and compaction/offload unit-tested.
-- Published: 1.16.12 build 50; 1.16.14 build 52 is the source release in CI.
-  1.16.10 fixed the helper prompt, 1.16.9 added audio/offload sync, 1.16.11
-  added image tool results/signatures/title-compaction parity, 1.16.12
-  persisted tool-result images, and 1.16.14 reattaches the terminal after a
-  dropped stream.
+- Published: 1.16.14 build 52. 1.16.10 fixed the helper prompt, 1.16.9 added
+  audio/offload sync, 1.16.11 added image tool results/signatures/title-
+  compaction parity, 1.16.12 persisted tool-result images, and 1.16.14
+  reattaches the terminal after a dropped stream.
