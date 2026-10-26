@@ -447,6 +447,11 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			return
 		}
 		compactProvider := attempts[startingAttempt]
+		if offloaded, n := s.offloadHistory(sb, messages, system, tools, compactProvider.model.ContextWindow); n > 0 {
+			// Offload is silent in the official loop: the model sees the stub
+			// in its repl and can file_read the path.
+			messages = offloaded
+		}
 		compactedMessages, didCompact, cerr := s.maybeCompact(
 			run, messages, system, tools, compactProvider.model.ContextWindow,
 			compactProvider.client, compactProvider.model, maxTokens, &inLoopCompactions,

@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"math"
 	"strings"
-	"unicode/utf8"
 )
 
 // Context estimation follows the Android client's ContextSizeMeter weight for
@@ -59,18 +59,34 @@ func estimateWireTokens(text string) int {
 }
 
 func estimateImageTokens(data string) int {
-	// Providers tokenize an image by pixel grid, not by its base64 length.
-	// Base64/4 over-read a 500 KB screenshot by ~100x, which falsely trips
-	// compaction on a single-turn session. Use a bounded byte proxy: roughly
-	// 1k tokens per 100 KB of encoded image, with the provider's floor/ceiling.
-	n := utf8.RuneCountInString(data) / 100
-	if n < 85 {
-		n = 85
+	if data == "" {
+		return 0
 	}
-	if n > 4000 {
-		n = 4000
+	raw, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		raw, err = base64.RawStdEncoding.DecodeString(data)
 	}
-	return n
+	if err != nil || len(raw) == 0 {
+		return 1000
+	}
+	w, h := imageBounds(raw)
+	if w <= 0 || h <= 0 {
+		return 1000
+	}
+	// Match BPETokenizer: scale the long edge to 2048, then a 32x32 grid,
+	// with an 85-token floor.
+	if w > h && w > 2048 {
+		h = int(math.Ceil(float64(h) * 2048 / float64(w)))
+		w = 2048
+	} else if h > 2048 {
+		w = int(math.Ceil(float64(w) * 2048 / float64(h)))
+		h = 2048
+	}
+	tokens := int(math.Ceil(float64(w)/32) * math.Ceil(float64(h)/32))
+	if tokens < 85 {
+		tokens = 85
+	}
+	return tokens
 }
 
 func estimatePartTokens(p WirePart) int {
@@ -498,8 +514,8 @@ func trimLargeToolResults(messages []WireMessage, limit int) []WireMessage {
 		cp := m
 		cp.Parts = append([]WirePart(nil), m.Parts...)
 		for j, p := range cp.Parts {
-			if p.Type == "tool_result" && len(p.Content) > limit {
-				cp.Parts[j].Content = p.Content[:limit] + "\n... (result shortened to fit the model context window)"
+			if p.Type == "tool_result" && len([]rune(p.Content)) > limit {
+				cp.Parts[j].Content = string([]rune(p.Content)[:limit]) + "\n... (result shortened to fit the model context window)"
 			}
 		}
 		out[i] = cp

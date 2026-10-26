@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -840,7 +841,7 @@ func TestDeviceCLIRouting(t *testing.T) {
 		"minis-config get defaults":                              true,
 		"minis-model-use list":                                   true,
 		"minis-scheduled list":                                   true,
-		"minis-sessions-cli search --keywords budget":            false,
+		"minis-sessions-cli search --keywords budget":            true,
 		"echo 'android-calendar is a CLI'":                       false,
 		"python3 script.py --name android-calendar":              false,
 		"rg -n 'android-clipboard' /var/minis/workspace":         false,
@@ -2101,8 +2102,12 @@ func TestImageTokenEstimateIsBounded(t *testing.T) {
 	if n := estimateImageTokens(big); n > 4000 || n < 85 {
 		t.Fatalf("image estimate = %d", n)
 	}
-	if n := estimateImageTokens(""); n != 85 {
+	if n := estimateImageTokens(""); n != 0 {
 		t.Fatalf("empty image estimate = %d", n)
+	}
+	png := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII="
+	if n := estimateImageTokens(png); n != 85 {
+		t.Fatalf("1x1 PNG estimate = %d", n)
 	}
 }
 
@@ -2510,5 +2515,146 @@ func TestReadFileDirectionAndTruncation(t *testing.T) {
 	truncated, err := sb.ReadFileDirection("/var/minis/workspace/lines.txt", 1, 0, 50, "head")
 	if err != nil || !strings.Contains(truncated, "truncated at 50 chars") || !strings.Contains(truncated, "next_offset=") {
 		t.Fatalf("truncated = %q err=%v", truncated, err)
+	}
+}
+
+func TestImageBounds(t *testing.T) {
+	// Minimal PNG header with 2048x1024 IHDR dimensions.
+	png := make([]byte, 24)
+	copy(png, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+	binary.BigEndian.PutUint32(png[16:20], 2048)
+	binary.BigEndian.PutUint32(png[20:24], 1024)
+	if w, h := imageBounds(png); w != 2048 || h != 1024 {
+		t.Fatalf("png bounds = %dx%d", w, h)
+	}
+	gif := []byte("GIF89a\x40\x01\xf0\x00")
+	if w, h := imageBounds(gif); w != 320 || h != 240 {
+		t.Fatalf("gif bounds = %dx%d", w, h)
+	}
+	if w, h := imageBounds([]byte("not an image")); w != 0 || h != 0 {
+		t.Fatalf("unknown bounds = %dx%d", w, h)
+	}
+}
+
+func TestAzureOpenAIRequest(t *testing.T) {
+	var path, key, auth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		key = r.Header.Get("api-key")
+		auth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	p := &openAIProvider{cfg: &Provider{
+		ID: "azure", Kind: "openai", BaseURL: upstream.URL + "?api-version=2025-01-01", APIKey: "az", Azure: true,
+	}, http: newProviderHTTP()}
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "gpt-5-deploy"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "/openai/deployments/gpt-5-deploy/chat/completions" {
+		t.Fatalf("azure path = %q", path)
+	}
+	if key != "az" || auth != "" {
+		t.Fatalf("azure auth key=%q auth=%q", key, auth)
+	}
+}
+
+func TestAnthropicToolIDMapping(t *testing.T) {
+	wire := anthropicWireID("call_abc|fc_def")
+	if !anthropicIDPattern.MatchString(wire) || wire != anthropicWireID("call_abc|fc_def") {
+		t.Fatalf("mapped id = %q", wire)
+	}
+	if anthropicWireID("toolu_123") != "toolu_123" {
+		t.Fatal("valid id changed")
+	}
+	msgs := []WireMessage{
+		{Role: "assistant", Parts: []WirePart{{Type: "tool_use", ID: "call_abc|fc_def", Name: "x", Args: json.RawMessage(`{}`)}}},
+		{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: "call_abc|fc_def", Name: "x", Content: "ok"}}},
+	}
+	out, err := anthropicMessages(msgs, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := fmt.Sprint(out)
+	if strings.Contains(raw, "|") || !strings.Contains(raw, wire) {
+		t.Fatalf("wire history = %s", raw)
+	}
+}
+
+func TestOpenAIUsageCacheAccounting(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":10,"prompt_cache_hit_tokens":60,"prompt_tokens_details":{"cache_write_tokens":10},"completion_tokens_details":{"reasoning_tokens":3}}}`+"\n\n")
+	}))
+	defer upstream.Close()
+	p := &openAIProvider{cfg: &Provider{Kind: "openai", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	res, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "m"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Usage.InputTokens != 30 || res.Usage.CacheReadInputTokens != 60 || res.Usage.CacheCreationInputTokens != 10 || res.Usage.LatestContextTokens != 100 {
+		t.Fatalf("usage = %+v", res.Usage)
+	}
+}
+
+func TestGeminiUsageAccounting(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"cachedContentTokenCount":20,"candidatesTokenCount":10,"thoughtsTokenCount":5}}`+"\n\n")
+	}))
+	defer upstream.Close()
+	p := &geminiProvider{cfg: &Provider{Kind: "gemini", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	res, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "gemini-3-pro"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Usage.InputTokens != 80 || res.Usage.OutputTokens != 15 || res.Usage.CacheReadInputTokens != 20 || res.Usage.LatestContextTokens != 100 {
+		t.Fatalf("usage = %+v", res.Usage)
+	}
+}
+
+func TestContextOffloadHistory(t *testing.T) {
+	dir := t.TempDir()
+	sb, err := NewSandbox(SandboxConfig{WorkRoot: dir, MaxOutput: 1_000_000}, "sess-offload-history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	big := strings.Repeat("output line\n", 8000) // ~48 KB
+	var msgs []WireMessage
+	for i := 0; i < 6; i++ {
+		id := fmt.Sprintf("call_%d", i)
+		msgs = append(msgs,
+			WireMessage{Role: "assistant", Parts: []WirePart{{Type: "tool_use", ID: id, Name: "shell_execute", Args: json.RawMessage(`{"command":"x"}`)}}},
+			WireMessage{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: id, Name: "shell_execute", Content: big}}},
+		)
+	}
+	msgs = append(msgs, WireMessage{Role: "user", Parts: []WirePart{{Type: "text", Text: "recent"}}})
+	s := &Server{}
+	out, n := s.offloadHistory(sb, msgs, "system", nil, 128_000)
+	if n == 0 {
+		t.Fatal("nothing was offloaded")
+	}
+	if !strings.HasPrefix(out[1].Parts[0].Content, offloadedPrefix) {
+		t.Fatalf("old result not stubbed: %q", out[1].Parts[0].Content[:20])
+	}
+	last := len(out) - 4
+	for i := last; i < len(out); i++ {
+		for _, p := range out[i].Parts {
+			if strings.HasPrefix(p.Content, offloadedPrefix) {
+				t.Fatalf("protected message %d was offloaded", i)
+			}
+		}
+	}
+	entries, err := sb.ListDir("/var/minis/offloads/tools")
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("offload files = %+v err=%v", entries, err)
 	}
 }

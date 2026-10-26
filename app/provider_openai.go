@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -46,14 +47,18 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 
 	headers := map[string]string{}
 	if p.cfg.APIKey != "" {
-		headers["Authorization"] = "Bearer " + p.cfg.APIKey
+		if p.cfg.Azure {
+			headers["api-key"] = p.cfg.APIKey
+		} else {
+			headers["Authorization"] = "Bearer " + p.cfg.APIKey
+		}
 	}
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
-	resp, err := p.http.doJSON(streamCtx, "POST", openAIEndpoint(p.cfg.BaseURL), headers, body, true)
+	resp, err := p.http.doJSON(streamCtx, "POST", p.endpoint("chat/completions", req.Model.ID), headers, body, true)
 	if err != nil {
 		return ProviderResult{}, err
 	}
@@ -120,10 +125,15 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
 			Usage *struct {
-				PromptTokens        int `json:"prompt_tokens"`
-				CompletionTokens    int `json:"completion_tokens"`
-				PromptTokensDetails struct {
-					CachedTokens int `json:"cached_tokens"`
+				PromptTokens             int `json:"prompt_tokens"`
+				CompletionTokens         int `json:"completion_tokens"`
+				PromptCacheHitTokens     int `json:"prompt_cache_hit_tokens"`
+				CachedTokens             int `json:"cached_tokens"`
+				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+				PromptTokensDetails      struct {
+					CachedTokens             int `json:"cached_tokens"`
+					CacheWriteTokens         int `json:"cache_write_tokens"`
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 				} `json:"prompt_tokens_details"`
 				CompletionTokensDetails struct {
 					ReasoningTokens int `json:"reasoning_tokens"`
@@ -145,10 +155,20 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 			return fmt.Errorf("provider error: %s", chunk.Error.Message)
 		}
 		if chunk.Usage != nil {
-			usage.InputTokens = chunk.Usage.PromptTokens
+			prompt := chunk.Usage.PromptTokens
+			cacheRead := maxInts(chunk.Usage.PromptCacheHitTokens, chunk.Usage.CachedTokens, chunk.Usage.PromptTokensDetails.CachedTokens)
+			cacheWrite := maxInts(chunk.Usage.CacheCreationInputTokens, chunk.Usage.PromptTokensDetails.CacheWriteTokens, chunk.Usage.PromptTokensDetails.CacheCreationInputTokens)
+			input := prompt
+			if prompt-cacheRead-cacheWrite >= 0 {
+				input = prompt - cacheRead - cacheWrite
+			} else if prompt-cacheRead >= 0 {
+				input = prompt - cacheRead
+			}
+			usage.InputTokens = input
 			usage.OutputTokens = chunk.Usage.CompletionTokens
-			usage.CacheReadInputTokens = chunk.Usage.PromptTokensDetails.CachedTokens
-			usage.LatestContextTokens = chunk.Usage.PromptTokens
+			usage.CacheReadInputTokens = cacheRead
+			usage.CacheCreationInputTokens = cacheWrite
+			usage.LatestContextTokens = prompt
 			usage.ReasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
 		}
 		for _, choice := range chunk.Choices {
@@ -490,4 +510,32 @@ func shouldUseResponsesAPI(baseURL, modelID string) bool {
 		}
 	}
 	return false
+}
+
+// endpoint builds the Chat Completions URL. Azure deployments use
+// {base}/openai/deployments/{model}/chat/completions and keep the api-version
+// query string the user pasted into the base URL.
+func (p *openAIProvider) endpoint(path, modelID string) string {
+	if !p.cfg.Azure {
+		return openAIEndpoint(p.cfg.BaseURL)
+	}
+	base, query := splitQuery(p.cfg.BaseURL)
+	return strings.TrimSuffix(base, "/") + "/openai/deployments/" + url.PathEscape(modelID) + "/" + path + query
+}
+
+func splitQuery(base string) (string, string) {
+	if i := strings.IndexByte(base, '?'); i >= 0 {
+		return base[:i], "?" + base[i+1:]
+	}
+	return base, ""
+}
+
+func maxInts(values ...int) int {
+	max := 0
+	for _, v := range values {
+		if v > max {
+			max = v
+		}
+	}
+	return max
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -16,6 +17,14 @@ import (
 type responsesProvider struct {
 	cfg  *Provider
 	http *providerHTTP
+}
+
+func responsesRequestURL(cfg *Provider, modelID string) string {
+	if cfg.Azure {
+		base, query := splitQuery(cfg.BaseURL)
+		return strings.TrimSuffix(base, "/") + "/openai/deployments/" + url.PathEscape(modelID) + "/responses" + query
+	}
+	return responsesEndpoint(cfg.BaseURL)
 }
 
 func responsesEndpoint(base string) string {
@@ -83,14 +92,18 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	}
 	headers := map[string]string{}
 	if p.cfg.APIKey != "" {
-		headers["Authorization"] = "Bearer " + p.cfg.APIKey
+		if p.cfg.Azure {
+			headers["api-key"] = p.cfg.APIKey
+		} else {
+			headers["Authorization"] = "Bearer " + p.cfg.APIKey
+		}
 	}
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
-	resp, err := p.http.doJSON(streamCtx, "POST", responsesEndpoint(p.cfg.BaseURL), headers, body, true)
+	resp, err := p.http.doJSON(streamCtx, "POST", responsesRequestURL(p.cfg, req.Model.ID), headers, body, true)
 	if err != nil {
 		return ProviderResult{}, err
 	}
@@ -374,6 +387,16 @@ func capResponsesID(id, prefix string) string {
 	if id == "" {
 		id = newID(prefix)
 	}
+	var b strings.Builder
+	b.Grow(len(id) + len(prefix) + 1)
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	id = b.String()
 	if !strings.HasPrefix(id, prefix+"_") {
 		id = prefix + "_" + id
 	}

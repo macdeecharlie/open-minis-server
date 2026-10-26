@@ -105,8 +105,12 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		}
 		if chunk.UsageMetadata != nil {
 			u := chunk.UsageMetadata
+			input := u.PromptTokenCount - u.CachedContentTokenCount
+			if input < 0 {
+				input = 0
+			}
 			usage = Usage{
-				InputTokens: u.PromptTokenCount, OutputTokens: u.CandidatesTokenCount,
+				InputTokens: input, OutputTokens: u.CandidatesTokenCount + u.ThoughtsTokenCount,
 				CacheReadInputTokens: u.CachedContentTokenCount,
 				ReasoningTokens:      u.ThoughtsTokenCount,
 				LatestContextTokens:  u.PromptTokenCount,

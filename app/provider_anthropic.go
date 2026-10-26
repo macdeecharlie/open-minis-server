@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -173,7 +175,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 			usage.OutputTokens = env.Message.Usage.OutputTokens
 			usage.CacheCreationInputTokens = env.Message.Usage.CacheCreationInputTokens
 			usage.CacheReadInputTokens = env.Message.Usage.CacheReadInputTokens
-			usage.LatestContextTokens = usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+			usage.LatestContextTokens = usage.InputTokens
 		case "content_block_start":
 			if env.ContentBlock.Type == "tool_use" {
 				b := &block{typ: "tool_use", id: env.ContentBlock.ID, name: env.ContentBlock.Name}
@@ -299,7 +301,7 @@ func anthropicMessages(msgs []WireMessage, echoReasoning bool) ([]map[string]any
 					}
 					content = append(content, map[string]any{
 						"type":  "tool_use",
-						"id":    part.ID,
+						"id":    anthropicWireID(part.ID),
 						"name":  part.Name,
 						"input": args,
 					})
@@ -328,7 +330,7 @@ func anthropicMessages(msgs []WireMessage, echoReasoning bool) ([]map[string]any
 					}
 					results = append(results, map[string]any{
 						"type":        "tool_result",
-						"tool_use_id": part.ID,
+						"tool_use_id": anthropicWireID(part.ID),
 						"content":     resultContent,
 						"is_error":    part.IsError,
 					})
@@ -500,4 +502,18 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+var anthropicIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
+
+// anthropicWireID maps an id from another provider onto Anthropic's accepted
+// id shape. Valid ids are kept; ids containing separators such as the
+// Responses API's `call_…|fc_…` become a stable hash so the matching
+// tool_result still points at the same block.
+func anthropicWireID(id string) string {
+	if anthropicIDPattern.MatchString(id) {
+		return id
+	}
+	sum := sha256.Sum256([]byte(id))
+	return "toolu_" + hex.EncodeToString(sum[:16])
 }

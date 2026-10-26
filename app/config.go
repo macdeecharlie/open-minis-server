@@ -28,6 +28,9 @@ type Provider struct {
 	APIKey    string            `json:"api_key,omitempty"`
 	APIKeyEnv string            `json:"api_key_env,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
+	// Azure switches OpenAI to the Azure deployment URL and api-key header,
+	// matching the app's provider option.
+	Azure bool `json:"azure,omitempty"`
 	// IdleTimeoutSec overrides the provider stream watchdog. 0 keeps the
 	// 10-minute default used by the official app's default setting.
 	IdleTimeoutSec int     `json:"idle_timeout_seconds,omitempty"`
