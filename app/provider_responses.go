@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strings"
 )
 
@@ -24,8 +23,7 @@ func responsesRequestURL(cfg *Provider, modelID string) string {
 		return strings.TrimSuffix(cfg.BaseURL, "/") + "/" + strings.TrimPrefix(cfg.ResponsesPath, "/")
 	}
 	if cfg.Azure {
-		base, query := splitQuery(cfg.BaseURL)
-		return strings.TrimSuffix(base, "/") + "/openai/deployments/" + url.PathEscape(modelID) + "/responses" + query
+		return azureURL(cfg.BaseURL, modelID, "responses")
 	}
 	return responsesEndpoint(cfg.BaseURL)
 }
@@ -73,6 +71,9 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	}
 	if strings.TrimSpace(req.System) != "" {
 		body["instructions"] = req.System
+	}
+	if req.Model.ServiceTier != "" {
+		body["service_tier"] = req.Model.ServiceTier
 	}
 	if len(req.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(req.Tools))

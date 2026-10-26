@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -348,4 +349,18 @@ func flattenHeaders(h http.Header) map[string]string {
 		return nil
 	}
 	return out
+}
+
+// azureURL mirrors the app's azureUrl(): strip /v1 or /openai from the pasted
+// endpoint, keep its ?api-version query, then use the deployment path.
+func azureURL(base, modelID, path string) string {
+	base, query := splitQuery(base)
+	p := strings.TrimSuffix(base, "/")
+	if strings.HasSuffix(p, "/v1") {
+		p = strings.TrimSuffix(strings.TrimSuffix(p, "/v1"), "/")
+	}
+	if strings.HasSuffix(p, "/openai") {
+		p = strings.TrimSuffix(strings.TrimSuffix(p, "/openai"), "/")
+	}
+	return p + "/openai/deployments/" + url.PathEscape(modelID) + "/" + strings.TrimPrefix(path, "/") + query
 }

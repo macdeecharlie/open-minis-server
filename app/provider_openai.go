@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 )
@@ -35,6 +34,9 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		body["max_completion_tokens"] = effectiveMaxTokens(req.Model, req.MaxTokens)
 	} else {
 		body["max_tokens"] = effectiveMaxTokens(req.Model, req.MaxTokens)
+	}
+	if req.Model.ServiceTier != "" {
+		body["service_tier"] = req.Model.ServiceTier
 	}
 	if len(req.Tools) > 0 {
 		body["tools"] = req.Tools
@@ -542,8 +544,7 @@ func (p *openAIProvider) endpoint(path, modelID string) string {
 	if !p.cfg.Azure {
 		return openAIEndpoint(p.cfg.BaseURL)
 	}
-	base, query := splitQuery(p.cfg.BaseURL)
-	return strings.TrimSuffix(base, "/") + "/openai/deployments/" + url.PathEscape(modelID) + "/" + path + query
+	return azureURL(p.cfg.BaseURL, modelID, path)
 }
 
 func splitQuery(base string) (string, string) {

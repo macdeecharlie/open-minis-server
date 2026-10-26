@@ -40,6 +40,8 @@ type Provider struct {
 	// IncludeReasoning requests encrypted reasoning items (Codex backend).
 	IncludeReasoning bool `json:"include_reasoning,omitempty"`
 	RequireReasoning bool `json:"require_reasoning,omitempty"`
+	// SystemPrefix is prepended only for this provider (Anthropic OAuth gate).
+	SystemPrefix string `json:"system_prefix,omitempty"`
 	// IdleTimeoutSec overrides the provider stream watchdog. 0 keeps the
 	// 10-minute default used by the official app's default setting.
 	IdleTimeoutSec int     `json:"idle_timeout_seconds,omitempty"`
@@ -58,6 +60,7 @@ type Model struct {
 	TopP              *float64          `json:"top_p,omitempty"`
 	Headers           map[string]string `json:"headers,omitempty"`
 	ExtraBody         json.RawMessage   `json:"extra_body,omitempty"`
+	ServiceTier       string            `json:"service_tier,omitempty"`
 }
 
 type UpdateConfig struct {

@@ -866,7 +866,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				results = append(results, res)
 				continue
 			}
-			if serverToolNames[name] && !clientOwnedCall(name, args) {
+			if serverToolNames[name] && (run.Headless || !clientOwnedCall(name, args)) {
 				run.emit("tool_running", map[string]any{"id": id, "name": name})
 				res := s.executeTool(run.ctx, sb, name, args, func(line string) {
 					run.emit("tool_output", map[string]any{"id": id, "line": line})
