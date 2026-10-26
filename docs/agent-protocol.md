@@ -49,11 +49,17 @@ Bearer authentication is required. The request body is:
   "max_turns": 500,
   "max_tokens": 8192,
   "thinking": "OFF",
+  "headless": false,
   "fallbacks": ["another-configured-model"],
   "fallback_strategy": "default",
   "user_message_id": "the app's local DB row id"
 }
 ```
+
+`headless=true` tells the server that no paired app can execute device tools;
+they return a visible error instead of blocking. Scheduled/API runs should set
+it. Omitting `prompt_context` and `system` also selects a capability-aware
+headless prompt, but the caller must still set `headless` for tool behavior.
 
 When `prompt_context` is present the server assembles the complete system
 prompt (identity/SOUL, tool bullets, switches, skills/MCP/memory fragments,
