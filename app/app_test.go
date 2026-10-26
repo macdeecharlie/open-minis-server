@@ -2025,3 +2025,20 @@ func TestResponsesProviderStreamAndInput(t *testing.T) {
 		t.Fatalf("tools = %v", body["tools"])
 	}
 }
+
+func TestGeminiThinkingConfig(t *testing.T) {
+	cfg := geminiThinkingConfig("gemini-3-pro", "xhigh")
+	if cfg == nil || cfg["thinkingLevel"] != "high" || cfg["includeThoughts"] != true {
+		t.Fatalf("gemini-3 config = %+v", cfg)
+	}
+	cfg = geminiThinkingConfig("gemini-2.5-pro", "medium")
+	if cfg == nil || cfg["thinkingBudget"] != 4096 {
+		t.Fatalf("2.5 pro config = %+v", cfg)
+	}
+	if geminiThinkingConfig("gemini-2.5-flash-lite", "high") != nil {
+		t.Fatal("flash-lite should have no thinking config")
+	}
+	if geminiThinkingConfig("gemini-2.5-pro", "off") != nil {
+		t.Fatal("off should omit thinking config")
+	}
+}

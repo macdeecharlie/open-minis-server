@@ -22,11 +22,15 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if err != nil {
 		return ProviderResult{}, err
 	}
+	generation := map[string]any{
+		"maxOutputTokens": effectiveMaxTokens(req.Model, req.MaxTokens),
+	}
+	if cfg := geminiThinkingConfig(req.Model.ID, req.Thinking); cfg != nil {
+		generation["thinkingConfig"] = cfg
+	}
 	body := map[string]any{
-		"contents": contents,
-		"generationConfig": map[string]any{
-			"maxOutputTokens": effectiveMaxTokens(req.Model, req.MaxTokens),
-		},
+		"contents":         contents,
+		"generationConfig": generation,
 	}
 	if strings.TrimSpace(req.System) != "" {
 		body["systemInstruction"] = map[string]any{"parts": []map[string]any{{"text": req.System}}}
@@ -234,4 +238,45 @@ func geminiContents(msgs []WireMessage) ([]map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+// geminiThinkingConfig mirrors the model-family rules in the official
+// ThinkingRuleResolver: Gemini 3.x takes a thinkingLevel string, 2.5 Pro/Flash
+// take a token budget, and Flash Lite has no thinking control. Only enabled
+// levels are sent; omitting the field preserves each model's default.
+func geminiThinkingConfig(modelID, thinking string) map[string]any {
+	id := strings.ToLower(modelID)
+	level := strings.ToLower(strings.TrimSpace(thinking))
+	if level == "" || level == "off" {
+		return nil
+	}
+	if strings.Contains(id, "gemini-3") {
+		switch level {
+		case "minimal", "low":
+			level = "low"
+		case "medium":
+			level = "medium"
+		case "high", "xhigh", "max", "ultra":
+			level = "high"
+		default:
+			level = "medium"
+		}
+		return map[string]any{"thinkingLevel": level, "includeThoughts": true}
+	}
+	if strings.Contains(id, "flash-lite") {
+		return nil
+	}
+	var budget int
+	switch {
+	case strings.Contains(id, "2.5-pro"):
+		budget = map[string]int{"low": 1024, "medium": 4096, "high": 8192, "xhigh": 16384, "max": 16384, "ultra": 16384}[level]
+	case strings.Contains(id, "2.5-flash"):
+		budget = map[string]int{"low": 1024, "medium": 4096, "high": 8192, "xhigh": 8192, "max": 8192, "ultra": 8192}[level]
+	default:
+		return nil
+	}
+	if budget == 0 {
+		return nil
+	}
+	return map[string]any{"thinkingBudget": budget, "includeThoughts": true}
 }
