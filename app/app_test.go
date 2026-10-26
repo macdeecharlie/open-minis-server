@@ -2677,3 +2677,92 @@ func TestOpenAIIdleTimeoutSemantics(t *testing.T) {
 		t.Fatalf("provider config = %s/%s", first, steady)
 	}
 }
+
+func TestRunWithRuntimeProviders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"from runtime\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	_, ts := testServer(t, "mock")
+	frames := runSSE(t, ts, RunRequest{
+		SessionID: "sess-runtime-provider", RunID: "run-runtime-provider", Model: "local-model",
+		Headless: true,
+		Providers: []Provider{{
+			ID: "local", Kind: "openai", BaseURL: upstream.URL, APIKey: "k",
+			Models: []Model{{ID: "local-model", Name: "Local", ContextWindow: 128000}},
+		}},
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	})
+	sawText := false
+	for _, f := range frames {
+		if f.Event == "ready" && (f.Data["provider"] != "local" || f.Data["model"] != "local-model") {
+			t.Fatalf("ready = %+v", f.Data)
+		}
+		if f.Event == "assistant_end" && strings.Contains(fmt.Sprint(f.Data["parts"]), "from runtime") {
+			sawText = true
+		}
+	}
+	if !sawText {
+		t.Fatalf("runtime provider text missing: %+v", frames)
+	}
+}
+
+func TestRuntimeProviderValidation(t *testing.T) {
+	err := validateRuntimeProviders([]Provider{{
+		ID: "x", Kind: "openai", BaseURL: "file:///etc/passwd", Models: []Model{{ID: "m"}},
+	}}, "m")
+	if err == nil {
+		t.Fatal("non-HTTP base URL accepted")
+	}
+	if err := validateRuntimeProviders([]Provider{{
+		ID: "x", Kind: "openai", BaseURL: "https://example.com/v1", Models: []Model{{ID: "a"}},
+	}}, "missing"); err != nil {
+		t.Fatalf("server-configured primary should be allowed: %v", err)
+	}
+}
+
+func TestAnthropicBearerAuthType(t *testing.T) {
+	var auth, key string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		key = r.Header.Get("x-api-key")
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+	p := &anthropicProvider{cfg: &Provider{
+		Kind: "anthropic", BaseURL: "https://api.anthropic.com", APIKey: "oauth-token", AuthType: "bearer",
+	}, http: newProviderHTTP()}
+	// Redirect only the endpoint call to the fake upstream while keeping the
+	// native host decision (no custom-base Bearer fallback).
+	p.cfg.BaseURL = upstream.URL + "/api.anthropic.com"
+	_, _ = p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "claude-sonnet-4-5"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if auth != "Bearer oauth-token" || key != "" {
+		t.Fatalf("auth=%q key=%q", auth, key)
+	}
+}
+
+func TestOpenAIChatPathOverride(t *testing.T) {
+	var path string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	p := &openAIProvider{cfg: &Provider{
+		Kind: "openai", BaseURL: upstream.URL, APIKey: "k", ChatPath: "/chat/completions",
+	}, http: newProviderHTTP()}
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{ID: "m"}, Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "/chat/completions" {
+		t.Fatalf("path = %q", path)
+	}
+}

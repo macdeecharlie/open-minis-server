@@ -241,7 +241,12 @@ func (s *Server) handleAgentRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "messages is required")
 		return
 	}
-	if _, _, err := s.cfg.ResolveModel(req.Model); err != nil {
+	if len(req.Providers) > 0 {
+		if err := validateRuntimeProviders(req.Providers, req.Model); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	} else if _, _, err := s.cfg.ResolveModel(req.Model); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

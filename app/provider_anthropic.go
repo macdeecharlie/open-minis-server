@@ -68,7 +68,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	headers := map[string]string{"anthropic-version": "2023-06-01"}
 	custom := !strings.Contains(strings.ToLower(p.cfg.BaseURL), "api.anthropic.com")
 	if p.cfg.APIKey != "" {
-		if custom {
+		if custom || strings.EqualFold(p.cfg.AuthType, "bearer") {
 			headers["Authorization"] = "Bearer " + p.cfg.APIKey
 		} else {
 			headers["x-api-key"] = p.cfg.APIKey

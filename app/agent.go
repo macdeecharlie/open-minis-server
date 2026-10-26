@@ -321,7 +321,31 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		run.emit("error", map[string]any{"message": "session store: " + err.Error()})
 		return
 	}
-	provider, model, err := s.cfg.ResolveModel(req.Model)
+	resolveModel := func(id string) (*Provider, *Model, error) {
+		if len(req.Providers) > 0 {
+			if strings.TrimSpace(id) == "" {
+				p := &req.Providers[0]
+				if len(p.Models) == 0 {
+					return nil, nil, fmt.Errorf("provider %q has no models", p.ID)
+				}
+				return p, &p.Models[0], nil
+			}
+			for i := range req.Providers {
+				p := &req.Providers[i]
+				for j := range p.Models {
+					if strings.EqualFold(p.Models[j].ID, id) {
+						return p, &p.Models[j], nil
+					}
+				}
+			}
+			if p, m, err := s.cfg.ResolveModel(id); err == nil {
+				return p, m, nil
+			}
+			return nil, nil, fmt.Errorf("unknown model %q in this run", id)
+		}
+		return s.cfg.ResolveModel(id)
+	}
+	provider, model, err := resolveModel(req.Model)
 	if err != nil {
 		run.emit("error", map[string]any{"message": err.Error()})
 		return
@@ -336,7 +360,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		if id == "" || id == model.ID {
 			continue
 		}
-		fp, fm, ferr := s.cfg.ResolveModel(id)
+		fp, fm, ferr := resolveModel(id)
 		if ferr != nil {
 			continue
 		}

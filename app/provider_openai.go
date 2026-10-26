@@ -527,6 +527,9 @@ func shouldUseResponsesAPI(baseURL, modelID string) bool {
 // {base}/openai/deployments/{model}/chat/completions and keep the api-version
 // query string the user pasted into the base URL.
 func (p *openAIProvider) endpoint(path, modelID string) string {
+	if p.cfg.ChatPath != "" {
+		return strings.TrimSuffix(p.cfg.BaseURL, "/") + "/" + strings.TrimPrefix(p.cfg.ChatPath, "/")
+	}
 	if !p.cfg.Azure {
 		return openAIEndpoint(p.cfg.BaseURL)
 	}

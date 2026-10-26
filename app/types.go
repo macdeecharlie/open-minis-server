@@ -67,6 +67,10 @@ type RunRequest struct {
 	Fallbacks        []string       `json:"fallbacks,omitempty"`
 	FallbackStrategy string         `json:"fallback_strategy,omitempty"`
 	UserMessageID    string         `json:"user_message_id"`
+	// Providers lets a paired client execute its own app-local provider
+	// configuration through the server. They are used only for this run and
+	// never persisted.
+	Providers []Provider `json:"providers,omitempty"`
 }
 
 type Usage struct {

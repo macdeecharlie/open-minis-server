@@ -32,6 +32,9 @@ func responsesEndpoint(base string) string {
 	if strings.HasSuffix(b, "/responses") {
 		return b
 	}
+	if strings.HasSuffix(b, "/backend-api/codex") {
+		return b + "/responses"
+	}
 	if strings.HasSuffix(b, "/v1") {
 		return b + "/responses"
 	}
@@ -89,6 +92,9 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	}
 	if key := responsesPromptCacheKey(req.Messages); key != "" {
 		body["prompt_cache_key"] = key
+	}
+	if p.cfg.IncludeReasoning {
+		body["include"] = []string{"reasoning.encrypted_content"}
 	}
 	headers := map[string]string{}
 	if p.cfg.APIKey != "" {

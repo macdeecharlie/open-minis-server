@@ -31,6 +31,13 @@ type Provider struct {
 	// Azure switches OpenAI to the Azure deployment URL and api-key header,
 	// matching the app's provider option.
 	Azure bool `json:"azure,omitempty"`
+	// AuthType selects anthropic-style auth: "bearer" or "x-api-key".
+	AuthType string `json:"auth_type,omitempty"`
+	// ChatPath overrides the OpenAI-compatible request path (GitHub Copilot
+	// serves /chat/completions at the API root instead of /v1/...).
+	ChatPath string `json:"chat_path,omitempty"`
+	// IncludeReasoning requests encrypted reasoning items (Codex backend).
+	IncludeReasoning bool `json:"include_reasoning,omitempty"`
 	// IdleTimeoutSec overrides the provider stream watchdog. 0 keeps the
 	// 10-minute default used by the official app's default setting.
 	IdleTimeoutSec int     `json:"idle_timeout_seconds,omitempty"`
@@ -312,4 +319,40 @@ func (p *Provider) idleTimeout() time.Duration {
 		return time.Duration(p.IdleTimeoutSec) * time.Second
 	}
 	return providerIdleTimeout
+}
+
+// validateRuntimeProviders validates a per-run provider list sent by a paired
+// client. It permits keyless custom OpenAI/Anthropic-compatible endpoints,
+// matching the app's allowsEmptyAPIKey rule, but rejects malformed entries and
+// non-HTTP base URLs.
+func validateRuntimeProviders(providers []Provider, primaryModel string) error {
+	seen := map[string]bool{}
+	for _, p := range providers {
+		switch p.Kind {
+		case "openai", "openai-responses", "anthropic", "gemini":
+		default:
+			return fmt.Errorf("provider %q: unsupported runtime kind %q", p.ID, p.Kind)
+		}
+		if strings.TrimSpace(p.BaseURL) == "" {
+			return fmt.Errorf("provider %q: base_url is required", p.ID)
+		}
+		base := strings.ToLower(p.BaseURL)
+		if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+			return fmt.Errorf("provider %q: base_url must start with http:// or https://", p.ID)
+		}
+		if len(p.Models) == 0 {
+			return fmt.Errorf("provider %q: at least one model is required", p.ID)
+		}
+		for _, m := range p.Models {
+			if strings.TrimSpace(m.ID) == "" {
+				return fmt.Errorf("provider %q: model id is required", p.ID)
+			}
+			if seen[m.ID] {
+				return fmt.Errorf("duplicate runtime model id %q", m.ID)
+			}
+			seen[m.ID] = true
+		}
+	}
+	_ = primaryModel
+	return nil
 }

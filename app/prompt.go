@@ -54,6 +54,7 @@ type PromptContext struct {
 	DelegationEnabled bool   `json:"delegation_enabled,omitempty"`
 	Helper            bool   `json:"helper,omitempty"`
 	Headless          bool   `json:"headless,omitempty"`
+	OAuthSystemPrefix string `json:"oauth_system_prefix,omitempty"`
 	Language          string `json:"language,omitempty"`
 	Timezone          string `json:"timezone,omitempty"`
 	ModelUseCount     int    `json:"model_use_count,omitempty"`
@@ -154,6 +155,12 @@ func buildSystemPrompt(pc *PromptContext, workspace string) string {
 	}
 
 	var out strings.Builder
+	if prefix := strings.TrimSpace(pc.OAuthSystemPrefix); prefix != "" {
+		out.WriteString(prefix)
+		if !strings.HasSuffix(prefix, "\n") {
+			out.WriteString("\n\n")
+		}
+	}
 	out.Grow(len(identity) + len(base) + len(pc.Skills) + len(pc.MCP) + len(pc.GlobalMemory) + len(pc.DailyMemory) + 512)
 	out.WriteString(identity)
 	out.WriteString(base)
