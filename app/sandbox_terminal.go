@@ -225,10 +225,11 @@ func (t *terminal) resize(cols, rows int) error {
 	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
-func (t *terminal) snapshot(after int64) (chunk []byte, start, next int64, closed bool) {
+func (t *terminal) snapshot(after int64) (chunk []byte, start, next int64, closed bool, skipped int64) {
 	t.outMu.Lock()
 	defer t.outMu.Unlock()
 	if after < t.outAt {
+		skipped = t.outAt - after
 		after = t.outAt
 	}
 	start = after
@@ -274,7 +275,12 @@ func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, te
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
-		chunk, start, next, closed := term.snapshot(after)
+		chunk, start, next, closed, skipped := term.snapshot(after)
+		if skipped > 0 {
+			if !writeEvent("gap", map[string]any{"offset": start, "skipped": skipped}) {
+				return
+			}
+		}
 		if len(chunk) > 0 {
 			// start is the actual first buffered byte; when the caller's offset
 			// fell behind a trimmed scrollback, labeling the chunk with the

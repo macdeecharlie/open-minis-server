@@ -132,6 +132,18 @@ func buildSystemPrompt(pc *PromptContext, workspace string) string {
 		"{{MODEL_USE_NOTE}}", modelUseNote,
 		"{{SCHEDULED_NOTE}}", scheduledNote,
 	).Replace(promptBase)
+	if pc.Headless {
+		// Strip the Android/device CLI documentation. A headless run has no
+		// paired app; advertising android-* commands causes prompt/schema drift
+		// even though the runtime note says they are unavailable.
+		const start = "Android framework commands (available to run via shell_execute):"
+		const end = "\nEnvironment variables:"
+		if i := strings.Index(base, start); i >= 0 {
+			if j := strings.Index(base[i:], end); j >= 0 {
+				base = base[:i] + base[i+j:]
+			}
+		}
+	}
 
 	var out strings.Builder
 	out.Grow(len(identity) + len(base) + len(pc.Skills) + len(pc.MCP) + len(pc.GlobalMemory) + len(pc.DailyMemory) + 512)

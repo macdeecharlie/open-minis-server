@@ -126,10 +126,14 @@ func estimatedRequestTokens(system string, messages []WireMessage, tools []ToolD
 // compactThreshold returns 0 when the window is too small for a summary to
 // help. Matches ContextPolicy.forContextWindow.
 func compactThreshold(window int) int {
-	if window < 64_000 {
+	switch {
+	case window < 64_000:
 		return 0
+	case window < 128_000:
+		return window - 10_000
+	default:
+		return window - 20_000
 	}
-	return window - 20_000
 }
 
 const compactSystemPrompt = `You are a context compaction engine. Your summary will REPLACE the original messages in the conversation context window. The agent will read your summary as past context, then proceed based on the user's NEXT message — your summary is background, not a standing work order. Write the summary in the same language the user used in the conversation.

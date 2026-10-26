@@ -275,7 +275,10 @@ func (s *Server) providerFor(p *Provider) ProviderClient {
 // Android agent's context offload so one large output cannot consume the
 // model window.
 func offloadToolResult(sb ToolSandbox, res *ToolResult, aggressive bool) {
-	threshold := 200 * 1024
+	// Match the official context-pressure model: offload early only when the
+	// request is near the window, otherwise keep normal results in context.
+	// A 2 MB hard backstop prevents an unbounded single result.
+	threshold := 2 * 1024 * 1024
 	if aggressive {
 		threshold = 50 * 1024
 	}
@@ -294,6 +297,11 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	defer run.close()
 	if req.Headless {
 		run.Headless = true
+	}
+	if run.Headless && req.Prompt != nil {
+		pc := *req.Prompt
+		pc.Headless = true
+		req.Prompt = &pc
 	}
 
 	sessionID := strings.TrimSpace(req.SessionID)
@@ -381,7 +389,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 
 	// Store the user's new prompt exactly once. History is client-owned, so
 	// the server only needs this row for future Web UI session browsing.
-	if uid, text := newUserMessage(req.Messages); uid != "" || text != "" {
+	if uid, parts, text := newUserMessage(req.Messages); uid != "" || text != "" {
 		id := strings.TrimSpace(req.UserMessageID)
 		if id == "" {
 			id = newID("user")
@@ -390,7 +398,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			ID:        id,
 			SessionID: sessionID,
 			Role:      "user",
-			Parts:     []WirePart{{Type: "text", Text: text}},
+			Parts:     parts,
 			CreatedAt: nowMillis(),
 		}
 		if _, err := s.store.AppendMessage(msg); err != nil {
@@ -619,8 +627,11 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				break
 			}
 		}
+		previousAttempt := startingAttempt
 		startingAttempt = chosenAttempt
-		if streamErr == nil && chosenAttempt > 0 {
+		// Tell the user once per switch, not on every later turn that keeps
+		// using the already-selected fallback.
+		if streamErr == nil && chosenAttempt > 0 && chosenAttempt != previousAttempt {
 			run.emit("info", map[string]any{
 				"text": "⚠️ " + attempts[0].model.ID + " failed; switched to " + attempts[chosenAttempt].model.ID,
 			})
@@ -858,7 +869,7 @@ func historyHasPersonaReminder(messages []WireMessage) bool {
 	return false
 }
 
-func newUserMessage(msgs []WireMessage) (id, text string) {
+func newUserMessage(msgs []WireMessage) (id string, parts []WirePart, text string) {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		m := msgs[i]
 		if m.Role != "user" {
@@ -866,6 +877,7 @@ func newUserMessage(msgs []WireMessage) (id, text string) {
 		}
 		hasResult := false
 		var b strings.Builder
+		kept := make([]WirePart, 0, len(m.Parts))
 		for _, p := range m.Parts {
 			if p.Type == "tool_result" {
 				hasResult = true
@@ -873,10 +885,13 @@ func newUserMessage(msgs []WireMessage) (id, text string) {
 			if p.Type == "text" {
 				b.WriteString(p.Text)
 			}
+			if p.Type == "text" || p.Type == "image" || p.Type == "audio" {
+				kept = append(kept, p)
+			}
 		}
 		if !hasResult {
-			return "", b.String()
+			return "", kept, b.String()
 		}
 	}
-	return "", ""
+	return "", nil, ""
 }
