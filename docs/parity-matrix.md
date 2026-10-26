@@ -24,22 +24,25 @@ python3 scripts/android_inventory.py --mode repo --source /path/to/OpenMinis \
 python3 scripts/server_inventory.py
 ```
 
-## Inventory snapshot (2026-10-25)
+## Inventory snapshot (2026-10-26)
 
 | Scope | Files | Lines | Meaning |
 |---|---:|---:|---|
-| `android` | 2,186 | 865,528 | Delivery target; every row has an owner/status. |
+| `android` | 2,186 | 866,049 | Delivery target; every row has an owner/status. |
 | `ios-reference` | 1,314 | 1,279,362 | Behavioural reference. Out of scope for the Android build, but accounted for. |
 | `dependency` | 4,508 | 1,298,434 | `deps/` including the `ish` and `proot` submodules; not OpenMinis logic. |
 | `shared` | 21 | 8,780 | Cross-platform assets used by the apps. |
 | `project` | 38 | 8,349 | Scripts, CI, docs and repository metadata. |
-| **total** | **8,067** | **3,460,453** | Every file in the checkout, including submodules. |
+| **total** | **8,067** | **3,460,974** | Every file in the checkout, including submodules. |
 
-Android-only snapshot: **2,179 files / 865,187 lines** (tests, resources,
-generated schemas, bundled runtime assets). Seven files (the `server/` bridge,
-`TerminalSessionLike.kt`) are marked `provenance=refactor`; they are additions
-to the fork, not upstream OpenMinis. `unclassified` rows: **0** in both
-inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
+Android-only delivery snapshot (`src/android/app`): **2,178 files / 865,695
+lines**. Provenance there: 2,144 upstream, 16 upstream-modified, 9
+`server/`+`TerminalSessionLike.kt` refactor files, 9 local runtime assets
+(rootfs/PRoot/keystore-sized assets, counted without leaking local config).
+The repo-scope inventory has 18 upstream-modified and 10 refactor rows because
+it also covers top-level Gradle files. `unclassified` rows: **0** in both
+inventories. Excluded: `.git`, build outputs, local SDK paths and secret
+customization files. Server inventory: **122 files / 21,947 lines**.
 
 ## Status legend
 
@@ -62,15 +65,15 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 | `server/` | server bridge | implemented | SSE run protocol, tool results, file/terminal/session APIs, bootstrap, updater feed. |
 | `sandbox/` execution | server container | implemented / local fallback | Shell and file tools run in the dedicated **Debian 12** container as root. PRoot/rootfs files remain for device-bound shell commands (`android-*`, `minis-open`, `minis-scheduled`) and local mode, so their assets are correctly `local-fallback`. |
 | `sandbox/offload/*` | device | device-only | `android-*` native_offload handlers are device APIs, not server logic. |
-| `provider/` | server | partial | OpenAI-compatible, native OpenAI Responses (`kind: openai-responses`), Anthropic and Gemini streams; retries, fallback, thinking-effort clamping, tool-result images, audio input into OpenAI/Gemini, Gemini thought signatures/thinking levels and auxiliary translation. Missing: OAuth custody, native Anthropic signed thinking blocks (disabled to avoid 400s), output modalities, model catalogs, quotas. |
-| `agent/` | server + client | partial | Server owns the loop, prompt assembly, retries/fallback, empty-turn recovery, compaction/offload, tool-loop thresholds (10/20), helper wrap-up, replay, steering and cancel. Client still owns subagent orchestration, user-ask recovery and interrupted-tail repair. |
+| `provider/` | server + app credentials | implemented / edge-limited | OpenAI-compatible, native OpenAI Responses (including Codex OAuth backend), Anthropic (API key and OAuth bearer), Gemini, OpenRouter/xAI/Kimi/Copilot via the app's per-run provider list. The app owns provider UI/OAuth refresh and sends the active credential for the turn; the server never persists it. Model temperature/top_p/custom headers/extra-body knobs are forwarded. Remaining edges: signed Anthropic thinking replay, Responses reasoning-item replay beyond `encrypted_content`, Antigravity, and quota catalogs beyond observed headers. |
+| `agent/` | server | implemented | When the paired server is configured, every agent turn (including app-local providers) executes through the server loop: prompt assembly, retries/fallback, empty-turn recovery, compaction/offload, official loop detector, helper wrap-up, replay, steering, cancel, quota-header forwarding. Local loop remains only when the server is not configured. Subagent orchestration/user-ask UI remain app-side. |
 | `scheduled/` | device trigger + server execution | implemented | Device AlarmManager triggers the app's headless runner, which calls the server agent loop; completion notifications stay on-device, exactly like the official app. The server also has an API scheduler for headless clients. |
 | `data/` context/prompt | server | implemented / partial | The server owns the base prompt, tool bullets, ordering and runtime suffix. The app sends structured switches and the already-selected skill/MCP/memory fragments. |
-| `data/` memory/skills/MCP | device + server prompt | partial | Agent execution and prompt text are server-owned; the data repositories and editing UI remain on the phone. Server-side stores are still pending. |
+| `data/` memory/skills/MCP | app-owned + sandbox mirror | implemented | The app remains the editing source of truth. Global memory/skills/shared are uploaded to the real `/var/minis` sandbox paths before a run, agent-created files are pulled back after it, and backup sees the mirrored tree. MCP config is mirrored the same way. |
 | `browser/`, `speech/`, `service/`, `notification/`, `share/`, `webapp/`, `network/`, `accessibility/`, `offload/`, `power/`, `deeplink/` | device | device-only | Correctly remain on the phone; reachable through client tools and the shell CLI bridge. |
 | `ui/` | UI | ui-only | Compose UI is unchanged. Pure logic files that the server now owns are flagged in the CSV. |
-| `backup/` | device | device-only | `.minisbak` export/import remains in the app. The mirrored workspace is included; server-only offloads/global state are not. |
-| `auth/` | device | device-only | OAuth consent flows are device-bound; the server has no token custody/refresh yet, so OAuth-only accounts must use the local provider path. |
+| `backup/` | device | device-only | `.minisbak` export/import remains in the app. It includes the mirrored session workspace/offloads and the synced global shared/skills/memory tree. |
+| `auth/` | device | device-only | OAuth consent and token refresh stay on the device. The current access token (and provider-specific headers/account id) travel with each run over the bearer-authenticated TLS connection; the server does not write them to disk. |
 | `data/UpdateChecker` | device updater | implemented | Release feed and APK are served by the paired server; install is device-side. |
 
 ## Agent loop accounting (`ui/chat/ChatViewModel.kt`, 20,964 lines)
@@ -91,52 +94,39 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 
 ## Blocking parity gaps (ordered)
 
-1. **Provider parity.** OAuth token custody/refresh (Claude, Copilot, Gemini,
-   Kimi, xAI, OpenRouter, Antigravity), per-model thinking
-   rules/budgets, signed Anthropic thinking-block replay (currently disabled),
-   Gemini thinking configuration, model catalogs and quota adapters. Native
-   Anthropic/Gemini auxiliary calls are translated.
-2. **Server data stores.** Memory, skills and MCP configuration are still owned
-   by the app; the server receives fragments. Moving the stores would let
-   server-originated headless runs use memory/skills/MCP and remove the
-   structured-fragment bridge.
-3. **Agent-loop edge semantics.** The server supports steering/replay
-   (`/steer`, `/events?after=`), cancels on Stop, repairs orphaned pairs,
-   retries idle streams and gives helpers a wrap-up round. The Android
-   queued-prompt UI still drains after the run instead of calling `/steer`;
-   user-ask recovery across process death and concurrent tool dispatch remain
-   app-side.
-4. **Config write confirmation.** `minis-config get` is server-backed.
-   `minis-config set default_model` returns a pending token; after `user_ask`
-   approval, `minis-config confirm --token` applies it and writes the config
-   file. Other config fields are still app-only.
-5. **File browser write UI.** The server API supports list/read/upload/delete/
-   rename/mkdir and the browser deletes server files. The File-backed browser
-   is still a cache, so upload/rename UI actions are absent; same-size edits
-   now refresh by mtime. Tool images are persisted as media files and reloaded
-   by the transcript builder, so screenshots survive a chat reload without
-   hitting the 500 KB row cap.
-6. **Backup/restore.** `.minisbak` format, crypto, merge and rclone transport
-   remain in the app. The workspace is mirrored locally and is included, but
-   server-only offloads/global state are not part of the phone archive.
-7. **Server/client data parity.** Session folders/groups, usage/quota
-   aggregation, config audit and model catalogs remain client-side. Memory and
-   skill files are user-authored on the phone and sent as prompt fragments;
-   the server does not own those stores.
-8. **Accounting depth.** Every file is inventoried, including submodules and
-   refactor provenance, but the 203 `partial` Android rows are not individually
-   linked to a server implementation and test. The iOS tree is reference, not
-   implemented.
-9. **Long-tail provider features.** Image/audio/video *output* through
-   `minis-model-use`, OpenAI Responses-only models, signed Anthropic thinking
-   replay, Gemini thinking levels and provider quota APIs are not implemented
-   server-side.
-10. **Sandbox persistence.** System packages installed with apt survive restarts
-    but not an image rebuild; project dependencies should live in the
-    workspace/venv.
-11. **Device PRoot boundary.** Device-bound commands still execute in the
-    phone's existing PRoot shell (as the official app does); the server agent's
-    shell/file/web execution is PRoot-free in the Debian container.
+1. **Long-session outbound growth.** The server compacts and offloads its
+   outbound copy and reuses an anchored summary, but the app still uploads the
+   full raw transcript each turn. A very long image-heavy session can approach
+   the server's 64 MB run-body cap even though the model request itself is
+   bounded. The fix needs a client-visible server compaction marker or
+   outbound-only trimming.
+2. **Provider edge semantics.** Native Anthropic signed thinking blocks are
+   still not captured/replayed (the official Android provider also does not
+   capture signatures, so this is a shared provider limitation). Responses
+   reasoning items are requested via `encrypted_content` but not replayed as
+   items. Antigravity and other provider types the Android factory cannot build
+   are rejected visibly rather than silently falling back.
+3. **Headless data stores.** Interactive/scheduled app turns carry memory,
+   skills, MCP and provider credentials. The server's own API scheduler has no
+   app to supply those stores, so its headless runs only see configured server
+   tools; this is an extra API path, not the Android app's scheduler.
+4. **Server session metadata.** The server store carries titles and
+   transcripts. Groups/categories/icons and `minis-config`'s full topic surface
+   run on the device when paired (official behavior); server-headless CLI
+   clients see the reduced server store.
+5. **File browser write UI.** The server API supports upload/rename/mkdir and
+   the browser deletes server files. The official Android file browser itself
+   is read-only, so no upload/rename control is exposed in the unchanged UI.
+6. **Accounting depth.** Every file is inventoried with provenance, but the 203
+   `partial` Android rows are not each linked to a server function and test. The
+   iOS tree is reference, not implemented.
+7. **Sandbox persistence.** Packages installed with apt survive container
+   restarts but not an image rebuild; project dependencies belong in the
+   workspace/venv.
+8. **PRoot boundary.** Device-bound CLIs (`android-*`, `minis-open`,
+   `minis-scheduled`, `minis-config`, `minis-model-use`, sessions CLI) still run
+   in the phone's existing PRoot shell, exactly as the official app does. No
+   provider agent loop runs there while the paired server is configured.
 
 ## Verified so far
 
@@ -168,9 +158,12 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - Server file API verified end-to-end: list, upload, raw download, delete,
   rename, mkdir, and workspace removal on session delete.
 - Every shell/PTY command runs in a private mount namespace with real
-  `/var/minis/{workspace,attachments,offloads,browser,mcp-servers}` binds;
-  `pwd` is virtual, Python scripts that open the paths internally work, and
-  `/workspace` is scoped to the current session.
+  `/var/minis/{workspace,attachments,offloads,browser,mcp-servers,shared,skills,memory}`
+  binds; `pwd` is virtual, Python scripts that open the paths internally work,
+  and `/workspace` is scoped to the current session.
+- Global shared/skills/memory files upload into those binds before a run and
+  newer server-created files download back after it; the file API verified
+  `/var/minis/skills` upload/list/raw/delete against the live sandbox.
 - Tool results include encoded `minis_url` links; request image budget, audio
   parts for OpenAI/Gemini, image-bearing tool results, orphan tool-pair repair
   and provider idle timeouts are covered by tests. Image token estimates are
@@ -184,19 +177,35 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
   branch; server helper wrap-up gives the final deliverable round. Tool-result
   images round-trip from the client to OpenAI/Anthropic/Gemini and are persisted
   in the local transcript (1.16.12).
-- Server-backed `minis-sessions-cli`, `minis-config`, `minis-model-use` and
-  `minis-mcp-cli` execute in the sandbox; only `android-*`, `minis-open` and
-  `minis-scheduled` go to the device.
-- Tool-loop thresholds are 10 (warn) / 20 (stop), matching the official
-  magnitude, so legitimate polling survives.
+- Paired runs route `minis-config`, `minis-model-use` and
+  `minis-sessions-cli` to the device so their full official surfaces (app
+  settings, media output, session groups) stay available; `android-*`,
+  `minis-open` and `minis-scheduled` are device-only too. The server keeps
+  headless copies for scheduled/API runs; `minis-mcp-cli` is server-side.
+- The full official tool loop detector is ported (unknown-tool streak, global
+  circuit breaker, poll-no-progress, generic repeat, scheduled exemption and
+  the missing-`tool_title` reminder), with preflight required-argument checks.
+- Shell output is ANSI/CR sanitized and head/tail truncated at 50k chars;
+  `file_read` supports `direction=tail`, newline-aware truncation and
+  `next_offset`; file write/edit success text matches the app.
+- Context offload rewrites older large tool results, file_write/file_edit
+  arguments and images into `/var/minis/offloads/tools`, protecting the last
+  four messages and stopping at the policy target.
 - Sandbox CLI tools verified: `minis-sessions-cli list/messages`,
   `minis-config get`, `minis-model-use list/run`, `minis-scheduled list`.
 - Real `minis-model-use run` returned a live model response.
 - Auxiliary `/v1/chat/completions` translation verified against a native
   Anthropic SSE upstream (streaming and non-streaming).
 - Request image budget and compaction/offload unit-tested.
-- Published: 1.16.16 build 54 (latest release); 1.16.18 build 56 is the source
-  release in CI. 1.16.10 fixed the helper prompt, 1.16.11 added image tool
-  results/signatures/title-compaction parity, 1.16.14 reattached the terminal,
-  and 1.16.18 persists tool images as media files and preserves terminal bytes
-  under backpressure.
+- Runtime provider overrides verified live: a run with a per-run OpenAI-shaped
+  provider pointed at a temporary sandbox SSE server returned its text with
+  `provider=runtime`, without writing the provider into server config.
+- Per-run providers carry temperature/top_p/custom headers/extra body; quota
+  headers are forwarded to the app's quota sink; a retried POST with the same
+  `run_id` attaches to the existing run instead of executing it twice.
+- Published: 1.16.23 build 61 (latest release); 1.16.24 build 62 (model
+  overrides, quota headers, orphan-run cleanup) is the source release in CI.
+  1.16.10 fixed the helper prompt, 1.16.11 added image tool results/signature
+  parity, 1.16.14 reattached the terminal, 1.16.18 persisted tool images as
+  media files, 1.16.21 synced global stores, 1.16.23 moved app-local providers
+  onto the server, and 1.16.24 forwards model tuning and quota headers.

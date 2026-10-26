@@ -6,11 +6,14 @@ credentials are described by their effect; no token values are reproduced.
 ## Inventory coverage
 
 `repo-code-inventory.csv` walks the checkout including the `deps/ish` and
-`deps/proot` submodules: **8,067 files / 3,460,420 lines** (Android 2,186 /
-865,495; iOS reference 1,314 / 1,279,362; dependencies 4,508 / 1,298,434;
-shared 21 / 8,780; project 38 / 8,349). Seven Android files are marked
-`provenance=refactor`; all other Android rows are upstream. `unclassified` is
-zero. Build output (`.git`, `deps/build`, Gradle outputs) is excluded.
+`deps/proot` submodules: **8,067 files / 3,460,974 lines** (Android 2,186 /
+866,049; iOS reference 1,314 / 1,279,362; dependencies 4,508 / 1,298,434;
+shared 21 / 8,780; project 38 / 8,349). The Android-only delivery tree is
+**2,178 files / 865,695 lines**. Provenance in the delivery tree: 2,144
+upstream, 16 upstream-modified, 9 refactor, 9 local runtime assets; the repo
+scope has 18 modified and 10 refactor rows. `unclassified` is zero. Build
+output, local SDK paths and secret customization files are excluded.
+`server-code-inventory.csv`: **122 files / 21,947 lines**.
 
 ## Automated checks
 
@@ -35,10 +38,18 @@ The test suite covers:
 - model retry and fallback;
 - prompt assembly (skills, memory on/off, browser/user-ask switches, runtime);
 - context estimator, compaction split/pairing/summary reuse, offload;
-- request image budget;
-- native Gemini stream parsing and thought-signature round trip;
+- request image budget, pixel-based image token estimates and single-turn
+  compaction;
+- native Gemini stream parsing, usage accounting and thought-signature round trip;
 - native Anthropic auxiliary `/v1/chat/completions` translation (stream and JSON);
-- OpenAI `max_completion_tokens` / reasoning-effort clamping;
+- OpenAI `max_completion_tokens`, reasoning-effort clamping/off tiers and
+  Responses `[DONE]`/incomplete/content-filter paths;
+- the official tool loop detector, preflight arguments and title reminder;
+- shell ANSI/CR sanitation, 50k truncation, file tail reads and next_offset;
+- context offload of old results/arguments/images;
+- per-run provider overrides, model temperature/top_p/headers/extra body and
+  quota-header forwarding;
+- idempotent retried runs and provider error classification;
 - CLI endpoints and sandbox-token isolation from the app token;
 - `minis-config` pending-confirmation and one-shot token flow;
 - run replay (mid-run and after completion) and steering;
@@ -57,10 +68,13 @@ The test suite covers:
   `/workspace` exposes only the current session (other sessions are hidden).
 - A live mock run posted a `read_image` tool result with an image; the
   `tool_result` event carried `image`, `image_mime` and `image_path`.
-- A live mock run executed `minis-sessions-cli list` in the sandbox
-  (`executor=server`) rather than routing it to the phone.
+- Headless server CLI endpoints still run in the sandbox; paired runs route
+  `minis-sessions-cli`, `minis-config` and `minis-model-use` to the device so
+  the full official settings/session surface is available.
 - `mount` inside a command shows the per-session binds for workspace,
-  attachments, offloads, browser and MCP config.
+  attachments, offloads, browser, MCP config, shared, skills and memory.
+- Live global-store file API: upload to `/var/minis/skills`, list, raw read
+  and delete all succeed; a namespaced shell command reads the same file.
 - A second real run asked for `android-device info` and the server emitted
   `await_client`; posting a simulated device result continued the same run.
 - Server file API: upload → mkdir → rename → raw read → delete → session delete;
@@ -73,15 +87,20 @@ The test suite covers:
   - `minis-scheduled list`.
   - `minis-mcp-cli list/tools/call` against a temporary stdio MCP server,
     returning the expected tool output.
-- Release feed lists 1.16.14/build 52; authenticated APK download is 44,856,172
-  bytes, SHA-256 `e116bed157f82ea9af7ee333cda26f58b6fb70667ef8dd3b78ac7ed93e8a23e9`,
-  matching the release `.sha256`.
+- Release feed lists 1.16.23/build 61; the APK is 44,861,776 bytes with
+  SHA-256 `7d324ea9783fc960497011eb9f1c3a1c7838536d9bc86323a277562ec65aa7bf`,
+  matching the release `.sha256` and the feed page.
 - APK signature SHA-256 is the stable
   `ab5b668386da52fdc4476a9eb86a68a10daeacecb8453301ed73c25188d706ee`
-  (DN `CN=Android Debug`), versionCode 52, versionName 1.16.14.
+  (DN `CN=Android Debug`), versionCode 61, versionName 1.16.23.
 - `minis.gtoat.top` is embedded in the APK; the bearer token is not printed.
-- APK 1.16.7/build 45 through 1.16.12/build 50 have the same stable certificate
-  and matching digests.
+- APKs 1.16.20/build 58 through 1.16.24/build 62 use the same stable
+  certificate; 1.16.24 is the source release in CI.
+- A live run with a per-run provider list (temporary OpenAI-shaped SSE server
+  in the sandbox) returned `provider=runtime` and the expected text, proving
+  app-local provider execution does not need server config.
+- A live bare run with the configured OpenRouter model returned `OK` and
+  correct usage after the provider/usage changes.
 
 ## Not verified (environment limits)
 

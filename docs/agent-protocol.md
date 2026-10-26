@@ -27,7 +27,8 @@ Bearer authentication is required. The request body is:
     "skills": "Skills:\\n<available_skills>...",
     "mcp": "Available MCP Servers...",
     "global_memory": "Global memory (GLOBAL.md)...",
-    "daily_memory": "Recent memories..."
+    "daily_memory": "Recent memories...",
+    "oauth_system_prefix": "(optional provider-mandated system prefix, Anthropic OAuth)"
   },
   "messages": [
     {
@@ -52,9 +53,36 @@ Bearer authentication is required. The request body is:
   "headless": false,
   "fallbacks": ["another-configured-model"],
   "fallback_strategy": "default",
-  "user_message_id": "the app's local DB row id"
+  "user_message_id": "the app's local DB row id",
+  "idle_timeout_seconds": 120,
+  "providers": [
+    {
+      "id": "app-provider-instance-id",
+      "kind": "openai",
+      "base_url": "https://api.example.com/v1",
+      "api_key": "short-lived credential",
+      "headers": {"User-Agent": "..."},
+      "chat_path": "/chat/completions",
+      "auth_type": "bearer",
+      "models": [
+        {
+          "id": "model-id", "name": "Model", "context_window": 128000,
+          "max_output_tokens": 8192, "supports_reasoning": true,
+          "reasoning_efforts": ["low", "medium", "high"],
+          "input_modalities": ["text", "image"],
+          "temperature": 0.7, "top_p": 0.9,
+          "headers": {}, "extra_body": {}
+        }
+      ]
+    }
+  ]
 }
 ```
+
+`providers` is the app's per-run provider configuration. The server resolves the
+primary model and fallbacks from it first, then falls back to its own config.
+Credentials are used for that run only and are never written to the session
+store or server config.
 
 `headless=true` tells the server that no paired app can execute device tools;
 they return a visible error instead of blocking. Scheduled/API runs should set
@@ -103,6 +131,7 @@ data: {"text":"Hello"}
 | `tools_end` | `results` |
 | `usage` | token usage object |
 | `compacted` | `summary`, `messages`, `tokens`, `window`, `compaction` |
+| `provider_headers` | `provider`, `model`, `headers` (ratelimit/quota headers from the upstream response) |
 | `steered` | `client_id`, `text` |
 | `info` | `text` (visible notice: fallback, truncated images, loop warning) |
 | `truncated` | `skipped` (only if a replay window was exceeded) |
@@ -117,7 +146,8 @@ Gemini as `inlineData`.
 
 ## Reconnect and replay
 
-A dropped connection does **not** cancel the run. Reconnect with:
+A dropped connection does **not** cancel the run. Re-posting the same
+`run_id` attaches to the existing run instead of starting a second one. Reconnect with:
 
 ```http
 GET /v1/agent/runs/{run_id}/events?after=7

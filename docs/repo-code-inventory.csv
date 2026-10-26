@@ -1,8 +1,8 @@
 path,scope,kind,lines,bytes,owner,status,classification_reason,provenance
 .github/ISSUE_TEMPLATE/bug_report.md,project,asset,45,1150,project,not-applicable,"build, docs, CI or repository tooling",upstream
 .github/pull_request_template.md,project,asset,21,799,project,not-applicable,"build, docs, CI or repository tooling",upstream
-.github/workflows/android.yml,project,yaml,76,2204,project,not-applicable,"build, docs, CI or repository tooling",upstream
-.gitignore,project,other,168,4419,project,not-applicable,repository metadata,upstream
+.github/workflows/android.yml,project,yaml,76,2204,project,not-applicable,"build, docs, CI or repository tooling",refactor
+.gitignore,project,other,168,4419,project,not-applicable,repository metadata,upstream-modified
 .gitmodules,project,other,8,214,project,not-applicable,repository metadata,upstream
 BUILDING.md,project,asset,297,12429,project,not-applicable,repository metadata,upstream
 CONTRIBUTING.md,project,asset,48,1968,project,not-applicable,repository metadata,upstream
@@ -4545,16 +4545,16 @@ scripts/tests/minis-mcp-cli/test_pool_stdio_cap.py,project,script,405,15889,proj
 scripts/tests/minis-mcp-cli/test_startup_timeout.py,project,script,219,8622,project,not-applicable,"build, docs, CI or repository tooling",upstream
 scripts/update_models_dev.sh,project,script,41,1386,project,not-applicable,"build, docs, CI or repository tooling",upstream
 scripts/verify_models_dev_resolution.py,project,script,181,6924,project,not-applicable,"build, docs, CI or repository tooling",upstream
-src/android/app/build.gradle.kts,android,config,544,27067,build-system,not-applicable,build configuration,upstream
+src/android/app/build.gradle.kts,android,config,544,27067,build-system,not-applicable,build configuration,upstream-modified
 src/android/app/libs/rclone.aar,android,binary,0,15278177,device-artifact,device-only,signing/build artifact,upstream
 src/android/app/open-minis-release.jks,android,other,13,2618,device-artifact,device-only,signing/build artifact,upstream
 src/android/app/proguard-rules.pro,android,config,28,1540,build-system,not-applicable,build configuration,upstream
-src/android/app/provider-customization.properties,android,config,15,764,build-system,not-applicable,build configuration,upstream
+src/android/app/provider-customization.properties,android,config,15,764,build-system,not-applicable,build configuration,refactor
 src/android/app/provider-customization.properties.example,android,other,15,764,build-system,not-applicable,build configuration,upstream
 src/android/app/schemas/com.openminis.app.data.db.AppDatabase/12.json,android,asset,502,15551,server-schema,partial,Room schema contract,upstream
 src/android/app/schemas/com.openminis.app.data.db.AppDatabase/13.json,android,asset,514,15959,server-schema,partial,Room schema contract,upstream
 src/android/app/schemas/com.openminis.app.data.db.AppDatabase/14.json,android,asset,523,16275,server-schema,partial,Room schema contract,upstream
-src/android/app/server-customization.properties.example,android,other,4,247,build-system,not-applicable,build configuration,upstream
+src/android/app/server-customization.properties.example,android,other,4,247,build-system,not-applicable,build configuration,refactor
 src/android/app/src/androidTest/java/com/openminis/app/backup/RestoreInsertBenchmark.kt,android,kotlin,142,5789,dev-only,not-applicable,test/debug,upstream
 src/android/app/src/androidTest/java/com/openminis/app/data/db/ChildSessionMigrationTest.kt,android,kotlin,63,2572,dev-only,not-applicable,test/debug,upstream
 src/android/app/src/androidTest/java/com/openminis/app/data/db/MessageAttributionMigrationTest.kt,android,kotlin,241,10261,dev-only,not-applicable,test/debug,upstream
@@ -4647,7 +4647,7 @@ src/android/app/src/main/cpp/jieba_jni.cpp,android,native,212,8222,device-native
 src/android/app/src/main/cpp/pty_bridge.c,android,native,327,12331,device-native,device-only,JNI/native helper,upstream
 src/android/app/src/main/java/com/openminis/app/AppBuildInfo.kt,android,kotlin,50,1777,ui,ui-only,build/version display,upstream
 src/android/app/src/main/java/com/openminis/app/MainActivity.kt,android,kotlin,826,42312,device-wiring,device-only,application/activity wiring,upstream
-src/android/app/src/main/java/com/openminis/app/MinisApp.kt,android,kotlin,1309,75128,device-wiring,device-only,application/activity wiring,upstream
+src/android/app/src/main/java/com/openminis/app/MinisApp.kt,android,kotlin,1309,75128,device-wiring,device-only,application/activity wiring,upstream-modified
 src/android/app/src/main/java/com/openminis/app/accessibility/AccessibilityRecoveryManager.kt,android,kotlin,356,15501,device,device-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/accessibility/MinisAccessibilityService.kt,android,kotlin,274,11709,device,device-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/accessibility/NodeRegistry.kt,android,kotlin,57,1757,device,device-only,package,upstream
@@ -4660,7 +4660,7 @@ src/android/app/src/main/java/com/openminis/app/agent/ToolLoopDetector.kt,androi
 src/android/app/src/main/java/com/openminis/app/agent/jobs/AgentCallback.kt,android,kotlin,201,9526,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/agent/jobs/AgentJobRegistry.kt,android,kotlin,887,42981,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/agent/jobs/AgentSettings.kt,android,kotlin,33,1355,server,partial,package,upstream
-src/android/app/src/main/java/com/openminis/app/agent/jobs/HelperRunner.kt,android,kotlin,980,52264,server,partial,package,upstream
+src/android/app/src/main/java/com/openminis/app/agent/jobs/HelperRunner.kt,android,kotlin,980,52264,server,partial,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/agent/jobs/ModelTierResolver.kt,android,kotlin,281,13231,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/agent/jobs/SubAgentTermination.kt,android,kotlin,481,21865,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/agent/shell/BashismDetector.kt,android,kotlin,171,6274,server,partial,package,upstream
@@ -4779,7 +4779,7 @@ src/android/app/src/main/java/com/openminis/app/data/PayloadSizeAudit.kt,android
 src/android/app/src/main/java/com/openminis/app/data/PendingUpdateStore.kt,android,kotlin,158,6189,device-updater,implemented,file override,upstream
 src/android/app/src/main/java/com/openminis/app/data/SessionForkManager.kt,android,kotlin,214,10652,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/UpdateAutoChecker.kt,android,kotlin,71,3103,device-updater,implemented,file override,upstream
-src/android/app/src/main/java/com/openminis/app/data/UpdateChecker.kt,android,kotlin,525,25618,device-updater,implemented,file override,upstream
+src/android/app/src/main/java/com/openminis/app/data/UpdateChecker.kt,android,kotlin,525,25618,device-updater,implemented,file override,upstream-modified
 src/android/app/src/main/java/com/openminis/app/data/UpdatePolicy.kt,android,kotlin,325,14963,device-updater,implemented,file override,upstream
 src/android/app/src/main/java/com/openminis/app/data/UpdateStateStore.kt,android,kotlin,228,9944,device-updater,implemented,file override,upstream
 src/android/app/src/main/java/com/openminis/app/data/db/AppDatabase.kt,android,kotlin,400,19017,server+device,partial,package,upstream
@@ -4802,7 +4802,7 @@ src/android/app/src/main/java/com/openminis/app/data/db/UsageRecord.kt,android,k
 src/android/app/src/main/java/com/openminis/app/data/db/UsageRowRecord.kt,android,kotlin,15,534,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/db/WebAppShortcutDao.kt,android,kotlin,29,837,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/db/WebAppShortcutEntity.kt,android,kotlin,37,1593,server+device,partial,package,upstream
-src/android/app/src/main/java/com/openminis/app/data/model/AgentContentPart.kt,android,kotlin,102,4402,server+device,partial,package,upstream
+src/android/app/src/main/java/com/openminis/app/data/model/AgentContentPart.kt,android,kotlin,105,4597,server+device,partial,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/data/model/AgentToolDefinition.kt,android,kotlin,278,11109,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/model/AgentTypes.kt,android,kotlin,178,7644,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/model/ContentPart.kt,android,kotlin,68,1916,server+device,partial,package,upstream
@@ -4820,7 +4820,7 @@ src/android/app/src/main/java/com/openminis/app/data/model/VoiceModality.kt,andr
 src/android/app/src/main/java/com/openminis/app/data/model/VoiceProviderTemplate.kt,android,kotlin,240,12944,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/repository/AppIconRepository.kt,android,kotlin,85,3557,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/repository/BackgroundSettingsRepository.kt,android,kotlin,180,8368,server+device,partial,package,upstream
-src/android/app/src/main/java/com/openminis/app/data/repository/ChatRepository.kt,android,kotlin,1292,61101,server+device,partial,package,upstream
+src/android/app/src/main/java/com/openminis/app/data/repository/ChatRepository.kt,android,kotlin,1330,63253,server+device,partial,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/data/repository/EnvVarRepository.kt,android,kotlin,264,10400,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/repository/EnvVarStateStore.kt,android,kotlin,141,5258,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/repository/InternalTags.kt,android,kotlin,70,3249,server+device,partial,package,upstream
@@ -4835,7 +4835,7 @@ src/android/app/src/main/java/com/openminis/app/data/repository/SkillRepository.
 src/android/app/src/main/java/com/openminis/app/data/repository/WebAppShortcutRepository.kt,android,kotlin,52,1648,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/session/OrphanChildSweeper.kt,android,kotlin,115,5262,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/session/OrphanedSessionFiles.kt,android,kotlin,124,5724,server+device,partial,package,upstream
-src/android/app/src/main/java/com/openminis/app/data/session/SessionDeleter.kt,android,kotlin,121,6211,server+device,partial,package,upstream
+src/android/app/src/main/java/com/openminis/app/data/session/SessionDeleter.kt,android,kotlin,121,6211,server+device,partial,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/data/session/SessionStorage.kt,android,kotlin,284,13349,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/session/SessionTree.kt,android,kotlin,81,3103,server+device,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/data/storage/MediaStore.kt,android,kotlin,104,3584,server+device,partial,package,upstream
@@ -4940,7 +4940,7 @@ src/android/app/src/main/java/com/openminis/app/provider/gemini/GeminiProvider.k
 src/android/app/src/main/java/com/openminis/app/provider/gemini/GeminiThinkingRetry.kt,android,kotlin,70,3136,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/provider/openai/ChatCompletionsToolPairing.kt,android,kotlin,168,8002,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/provider/openai/CodexModelsApi.kt,android,kotlin,546,26237,server,partial,package,upstream
-src/android/app/src/main/java/com/openminis/app/provider/openai/OpenAIModelsApi.kt,android,kotlin,388,20673,server,partial,package,upstream
+src/android/app/src/main/java/com/openminis/app/provider/openai/OpenAIModelsApi.kt,android,kotlin,388,20673,server,partial,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/provider/openai/OpenAIProvider.kt,android,kotlin,4395,244186,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/provider/openai/ReasoningDetails.kt,android,kotlin,68,2931,server,partial,package,upstream
 src/android/app/src/main/java/com/openminis/app/provider/openai/ResponsesToolPairing.kt,android,kotlin,131,5793,server,partial,package,upstream
@@ -4985,7 +4985,7 @@ src/android/app/src/main/java/com/openminis/app/sandbox/ShellTimeoutPolicy.kt,an
 src/android/app/src/main/java/com/openminis/app/sandbox/SpawnSignalMask.kt,android,kotlin,85,3581,device-local-fallback,local-fallback,package,upstream
 src/android/app/src/main/java/com/openminis/app/sandbox/StderrDrain.kt,android,kotlin,70,3172,device-local-fallback,local-fallback,package,upstream
 src/android/app/src/main/java/com/openminis/app/sandbox/TerminalSanitizer.kt,android,kotlin,187,8488,device-local-fallback,local-fallback,package,upstream
-src/android/app/src/main/java/com/openminis/app/sandbox/TerminalSession.kt,android,kotlin,502,23057,device-terminal,local-fallback,file override,upstream
+src/android/app/src/main/java/com/openminis/app/sandbox/TerminalSession.kt,android,kotlin,502,23057,device-terminal,local-fallback,file override,upstream-modified
 src/android/app/src/main/java/com/openminis/app/sandbox/TerminalSessionLike.kt,android,kotlin,23,780,device+server-terminal,implemented,file override,refactor
 src/android/app/src/main/java/com/openminis/app/sandbox/Utf8StreamDecoder.kt,android,kotlin,56,2377,device-local-fallback,local-fallback,package,upstream
 src/android/app/src/main/java/com/openminis/app/sandbox/offload/AccessibilityOffloadHandler.kt,android,kotlin,1267,66202,device,device-only,Android native_offload CLI handler,upstream
@@ -5035,10 +5035,10 @@ src/android/app/src/main/java/com/openminis/app/scheduled/ScheduledTaskManager.k
 src/android/app/src/main/java/com/openminis/app/scheduled/ScheduledTaskMarker.kt,android,kotlin,288,15187,device-trigger+server-runner,implemented,package,upstream
 src/android/app/src/main/java/com/openminis/app/scheduled/ScheduledTaskStore.kt,android,kotlin,133,5456,device-trigger+server-runner,implemented,package,upstream
 src/android/app/src/main/java/com/openminis/app/scheduled/ScheduledWait.kt,android,kotlin,165,7557,device-trigger+server-runner,implemented,package,upstream
-src/android/app/src/main/java/com/openminis/app/server/RemoteTerminalSession.kt,android,kotlin,155,6314,server-bridge,implemented,file override,refactor
-src/android/app/src/main/java/com/openminis/app/server/ServerAgentClient.kt,android,kotlin,436,20465,server-bridge,implemented,file override,refactor
-src/android/app/src/main/java/com/openminis/app/server/ServerBootstrap.kt,android,kotlin,120,5718,server-bridge,implemented,file override,refactor
-src/android/app/src/main/java/com/openminis/app/server/ServerFileSync.kt,android,kotlin,162,7631,server-bridge,implemented,file override,refactor
+src/android/app/src/main/java/com/openminis/app/server/RemoteTerminalSession.kt,android,kotlin,213,8822,server-bridge,implemented,file override,refactor
+src/android/app/src/main/java/com/openminis/app/server/ServerAgentClient.kt,android,kotlin,488,22947,server-bridge,implemented,file override,refactor
+src/android/app/src/main/java/com/openminis/app/server/ServerBootstrap.kt,android,kotlin,124,6013,server-bridge,implemented,file override,refactor
+src/android/app/src/main/java/com/openminis/app/server/ServerFileSync.kt,android,kotlin,246,11683,server-bridge,implemented,file override,refactor
 src/android/app/src/main/java/com/openminis/app/server/ServerSettings.kt,android,kotlin,37,1376,server-bridge,implemented,file override,refactor
 src/android/app/src/main/java/com/openminis/app/server/ServerWire.kt,android,kotlin,116,5259,server-bridge,implemented,file override,refactor
 src/android/app/src/main/java/com/openminis/app/service/AgentForegroundService.kt,android,kotlin,1629,86171,device,device-only,package,upstream
@@ -5149,8 +5149,8 @@ src/android/app/src/main/java/com/openminis/app/ui/chat/ChatScreenHelpers.kt,and
 src/android/app/src/main/java/com/openminis/app/ui/chat/ChatToolDetailUI.kt,android,kotlin,1681,92729,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/chat/ChatToolFormatting.kt,android,kotlin,190,8265,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/chat/ChatUserMessageUI.kt,android,kotlin,807,41083,ui,ui-only,package,upstream
-src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModel.kt,android,kotlin,21017,1208893,server+ui-state,partial,ui logic override,upstream
-src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModelMentionExt.kt,android,kotlin,233,9491,ui,ui-only,ui logic override,upstream
+src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModel.kt,android,kotlin,21299,1224965,server+ui-state,partial,ui logic override,upstream-modified
+src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModelMentionExt.kt,android,kotlin,233,9491,ui,ui-only,ui logic override,upstream-modified
 src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModelSlashExt.kt,android,kotlin,299,13633,ui,ui-only,ui logic override,upstream
 src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModelStore.kt,android,kotlin,825,38908,ui,ui-only,ui logic override,upstream
 src/android/app/src/main/java/com/openminis/app/ui/chat/ChatViewModelUiStateExt.kt,android,kotlin,134,5179,ui,ui-only,ui logic override,upstream
@@ -5291,7 +5291,7 @@ src/android/app/src/main/java/com/openminis/app/ui/markdown/MarkdownParser.kt,an
 src/android/app/src/main/java/com/openminis/app/ui/markdown/MarkdownText.kt,android,kotlin,1042,40615,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/markdown/SyntaxHighlighter.kt,android,kotlin,94,3877,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/media/InlineMediaPlayer.kt,android,kotlin,659,26714,ui,ui-only,package,upstream
-src/android/app/src/main/java/com/openminis/app/ui/navigation/AppNavigation.kt,android,kotlin,1656,84323,ui,ui-only,package,upstream
+src/android/app/src/main/java/com/openminis/app/ui/navigation/AppNavigation.kt,android,kotlin,1656,84323,ui,ui-only,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/ui/navigation/ChatSplitScaffold.kt,android,kotlin,1012,52853,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/navigation/SafeNavigate.kt,android,kotlin,63,2845,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/onboarding/OnboardingModelFetch.kt,android,kotlin,65,2455,ui,ui-only,package,upstream
@@ -5308,7 +5308,7 @@ src/android/app/src/main/java/com/openminis/app/ui/sandbox/ContainerDnsScreen.kt
 src/android/app/src/main/java/com/openminis/app/ui/sandbox/ContainerNetworkSection.kt,android,kotlin,155,7349,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserDeletePolicy.kt,android,kotlin,115,5107,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserScreen.kt,android,kotlin,834,34421,ui,ui-only,package,upstream
-src/android/app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserViewModel.kt,android,kotlin,564,24203,ui,ui-only,package,upstream
+src/android/app/src/main/java/com/openminis/app/ui/sandbox/FileBrowserViewModel.kt,android,kotlin,564,24203,ui,ui-only,package,upstream-modified
 src/android/app/src/main/java/com/openminis/app/ui/sandbox/FilePreviewScreen.kt,android,kotlin,1583,68691,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/sandbox/MarkdownPreviewLinks.kt,android,kotlin,40,1801,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/sandbox/MirrorSettingsScreen.kt,android,kotlin,824,32769,ui,ui-only,package,upstream
@@ -5325,8 +5325,8 @@ src/android/app/src/main/java/com/openminis/app/ui/sessions/SearchFolders.kt,and
 src/android/app/src/main/java/com/openminis/app/ui/sessions/SearchHighlight.kt,android,kotlin,65,2947,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/sessions/SessionDuplicateTitle.kt,android,kotlin,81,3616,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/sessions/SessionListScreen.kt,android,kotlin,4019,198184,ui,ui-only,package,upstream
-src/android/app/src/main/java/com/openminis/app/ui/sessions/SessionListViewModel.kt,android,kotlin,1016,50201,ui,ui-only,package,upstream
-src/android/app/src/main/java/com/openminis/app/ui/sessions/SessionTitleRegenerator.kt,android,kotlin,288,15236,server,partial,ui logic override,upstream
+src/android/app/src/main/java/com/openminis/app/ui/sessions/SessionListViewModel.kt,android,kotlin,1016,50201,ui,ui-only,package,upstream-modified
+src/android/app/src/main/java/com/openminis/app/ui/sessions/SessionTitleRegenerator.kt,android,kotlin,288,15236,server,partial,ui logic override,upstream-modified
 src/android/app/src/main/java/com/openminis/app/ui/settings/AboutScreen.kt,android,kotlin,152,6397,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/settings/AddCustomModelScreen.kt,android,kotlin,102,3848,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/settings/AddModelsToGroupScreen.kt,android,kotlin,162,7395,ui,ui-only,package,upstream
@@ -5388,7 +5388,7 @@ src/android/app/src/main/java/com/openminis/app/ui/settings/backup/RestoreReport
 src/android/app/src/main/java/com/openminis/app/ui/settings/backup/RestoreServersScreen.kt,android,kotlin,149,6664,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/terminal/AnsiParser.kt,android,kotlin,121,4596,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/terminal/TerminalFonts.kt,android,kotlin,52,2159,ui,ui-only,package,upstream
-src/android/app/src/main/java/com/openminis/app/ui/terminal/TerminalScreen.kt,android,kotlin,503,22282,ui-terminal,implemented,file override,upstream
+src/android/app/src/main/java/com/openminis/app/ui/terminal/TerminalScreen.kt,android,kotlin,503,22282,ui-terminal,implemented,file override,upstream-modified
 src/android/app/src/main/java/com/openminis/app/ui/terminal/canvas/TerminalCanvasView.kt,android,kotlin,312,13589,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/terminal/canvas/TerminalInputView.kt,android,kotlin,262,11657,ui,ui-only,package,upstream
 src/android/app/src/main/java/com/openminis/app/ui/terminal/canvas/TerminalKeyMapper.kt,android,kotlin,69,2671,ui,ui-only,package,upstream
@@ -6727,7 +6727,7 @@ src/android/app/src/test/resources/table_planner_golden_ios.txt,android,asset,56
 src/android/build.gradle.kts,android,config,7,364,build-system,not-applicable,build configuration,upstream
 src/android/gradle/wrapper/gradle-wrapper.jar,android,binary,152,43583,build-system,not-applicable,build configuration,upstream
 src/android/gradle/wrapper/gradle-wrapper.properties,android,config,7,253,build-system,not-applicable,build configuration,upstream
-src/android/gradle.properties,android,config,6,239,build-system,not-applicable,build configuration,upstream
+src/android/gradle.properties,android,config,6,239,build-system,not-applicable,build configuration,upstream-modified
 src/android/gradlew,android,other,137,4095,build-system,not-applicable,build configuration,upstream
 src/android/local.properties,android,config,1,25,build-system,not-applicable,build configuration,upstream
 src/android/settings.gradle.kts,android,config,31,1213,build-system,not-applicable,build configuration,upstream

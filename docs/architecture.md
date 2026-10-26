@@ -61,7 +61,8 @@ queued-prompt UI remains the user-facing entry point.
 
 ## Sandbox and networks
 
-The server holds model, update and app tokens. The sandbox holds none of them;
+The server holds its own configured provider keys, update and app tokens; the
+app's provider credentials arrive with each run and are never persisted. The sandbox holds none of them;
 it runs the agent's shell as root inside a dedicated **Debian 12** container,
 with a real PTY, `apt`, Node, Python and build tools. There is no PRoot or
 Alpine rootfs in the execution path; those files remain only for local/offline
@@ -72,11 +73,17 @@ mode and device-side file bridges.
 - `/workspace/sessions/<id>/offloads` ← `/var/minis/offloads`
 - `/workspace/sessions/<id>/browser` ← `/var/minis/browser`
 - `/workspace/global/mcp-servers` ← `/var/minis/mcp-servers` (shared)
+- `/workspace/global/shared` ← `/var/minis/shared` (shared)
+- `/workspace/global/skills` ← `/var/minis/skills` (shared)
+- `/workspace/global/memory` ← `/var/minis/memory` (shared)
 
-`minis-sessions-cli`, `minis-config`, `minis-model-use` and `minis-scheduled`
-are the same binary installed under those names in the sandbox; they dispatch
-on `argv[0]` and call the server's `/v1/cli/*` API with the sandbox token. The
-MCP client is the bundled Python implementation and runs in the sandbox too.
+Paired runs route `minis-config`, `minis-model-use` and
+`minis-sessions-cli` to the phone so their full official surface (app settings,
+media output, session groups) is available; `android-*`, `minis-open` and
+`minis-scheduled` are device-only too. The same binaries in the sandbox call
+the server's `/v1/cli/*` API for headless/scheduled/API runs, and
+`minis-mcp-cli` always runs in the sandbox. The MCP client is the bundled
+Python implementation.
 
 The server joins `minis_net` + `minis_sandbox_net`; the sandbox joins only
 `minis_sandbox_net`; `minis-proxy` joins `minis_net` + `internal`; Caddy joins
@@ -86,8 +93,9 @@ networks or host listeners. It can reach the server on `:8080` for the
 
 Each shell command and PTY runs under `unshare -m` with
 `/usr/local/bin/minis-session-exec`, which binds the session's real
-`workspace`, `attachments`, `offloads` and `browser` directories at the
-virtual `/var/minis/...` paths. That makes internal file opens from Python,
+`workspace`, `attachments`, `offloads` and `browser` directories, plus the
+shared `mcp-servers`, `shared`, `skills` and `memory` stores, at the virtual
+`/var/minis/...` paths. That makes internal file opens from Python,
 Node, MCP servers and user scripts behave exactly like the official PRoot
 layout instead of relying on command-string rewriting. The sandbox has
 `SYS_ADMIN` + unconfined AppArmor for this, but no host mounts, devices or
@@ -97,8 +105,7 @@ Device-local paths (`attachments`, `skills`, `memory`, `shared`, `mounts`,
 `browser`) and commands invoking `android-*`, `minis-open` or `minis-scheduled`
 are routed to the paired app. The app executes them in its existing on-device
 shell exactly like the official build; the server never pretends to have
-Android APIs. `minis-sessions-cli`, `minis-config`, `minis-model-use` and
-`minis-mcp-cli` run inside the sandbox.
+Android APIs. Interactive CLI routing is described above.
 
 ## Storage
 

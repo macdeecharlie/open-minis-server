@@ -2,43 +2,47 @@ path,lines,role
 .github/workflows/test.yml,24,CI
 .gitignore,18,server/deployment file
 LICENSE,674,server/deployment file
-README.md,216,server/deployment file
+README.md,228,server/deployment file
 app/admin.go,183,admin config endpoints
-app/agent.go,897,"agent loop, retries, fallback, tool dispatch, replay/steer"
+app/agent.go,1053,"agent loop, retries, fallback, tool dispatch, replay/steer"
 app/api_cli.go,595,minis-* CLI API
 app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
 app/api_scheduled.go,53,scheduled task API
 app/api_terminal.go,91,terminal API proxy
-app/app_test.go,2139,test suite
+app/app_test.go,2826,test suite
 app/cli.go,666,minis-* CLI implementations
-app/config.go,295,configuration and validation
-app/context.go,588,"context estimator, compaction, offload, image budget, tool-pair repair"
+app/config.go,364,configuration and validation
+app/context.go,616,"context estimator, compaction, offload, image budget, tool-pair repair"
 app/go.mod,5,server/deployment file
 app/go.sum,2,server/deployment file
+app/image_bounds.go,66,server/deployment file
+app/loop.go,405,server/deployment file
 app/main.go,88,entrypoint and role dispatch
-app/prompt.go,186,server-owned prompt assembly
+app/offload_history.go,235,server/deployment file
+app/prompt.go,201,server-owned prompt assembly
 app/prompt_base.txt,90,server/deployment file
 app/prompt_browser.txt,2,server/deployment file
 app/prompt_memory_off.txt,6,server/deployment file
 app/prompt_memory_on.txt,11,server/deployment file
 app/prompt_url_browser.txt,1,server/deployment file
 app/prompt_url_plain.txt,1,server/deployment file
-app/provider.go,256,"provider HTTP, SSE, idle watchdog, error classification"
-app/provider_anthropic.go,368,"Anthropic wire, prompt cache"
-app/provider_gemini.go,282,"Gemini wire, thought signatures, audio"
+app/provider.go,351,"provider HTTP, SSE, idle watchdog, error classification"
+app/provider_anthropic.go,541,"Anthropic wire, prompt cache"
+app/provider_gemini.go,306,"Gemini wire, thought signatures, audio"
 app/provider_mock.go,129,offline test provider
-app/provider_openai.go,421,OpenAI-compatible wire
-app/provider_responses.go,380,server/deployment file
-app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
-app/sandbox_agent.go,507,sandbox container API
-app/sandbox_remote.go,299,server to sandbox client
-app/sandbox_terminal.go,404,PTY terminal
-app/scheduled.go,474,server scheduler and headless runner
-app/server.go,486,"HTTP routes, SSE, sessions, files, terminal proxy, config"
+app/provider_openai.go,564,OpenAI-compatible wire
+app/provider_responses.go,428,server/deployment file
+app/sandbox.go,803,"local/agent sandbox, mount namespace, file tools"
+app/sandbox_agent.go,508,sandbox container API
+app/sandbox_remote.go,304,server to sandbox client
+app/sandbox_terminal.go,469,PTY terminal
+app/scheduled.go,491,server scheduler and headless runner
+app/server.go,509,"HTTP routes, SSE, sessions, files, terminal proxy, config"
 app/store.go,360,append-only session store
-app/tools.go,738,"tool schemas, routing, execution, minis URLs"
-app/types.go,147,wire/config/session types
+app/terminal_sanitize.go,108,server/deployment file
+app/tools.go,759,"tool schemas, routing, execution, minis URLs"
+app/types.go,153,wire/config/session types
 app/update.go,229,private release proxy
 app/vendor/github.com/creack/pty/.editorconfig,54,vendored third-party (creack/pty)
 app/vendor/github.com/creack/pty/.gitignore,4,vendored third-party (creack/pty)
@@ -110,10 +114,10 @@ docker/sandbox/mcp-cli/lib/transport/stdio.py,159,bundled MCP client (from the o
 docker/sandbox/mcp-cli/lib/utils/__init__.py,0,bundled MCP client (from the official assets)
 docker/sandbox/mcp-cli/lib/utils/config.py,196,bundled MCP client (from the official assets)
 docker/sandbox/mcp-cli/lib/utils/deps.py,70,bundled MCP client (from the official assets)
-docker/sandbox/minis-session-exec,27,sandbox image and deployment
-docs/agent-protocol.md,201,documentation
-docs/architecture.md,123,documentation
-docs/parity-matrix.md,202,documentation
-docs/verification.md,92,documentation
-scripts/android_inventory.py,338,inventory tooling
+docker/sandbox/minis-session-exec,31,sandbox image and deployment
+docs/agent-protocol.md,231,documentation
+docs/architecture.md,130,documentation
+docs/parity-matrix.md,211,documentation
+docs/verification.md,111,documentation
+scripts/android_inventory.py,430,inventory tooling
 scripts/server_inventory.py,101,inventory tooling
