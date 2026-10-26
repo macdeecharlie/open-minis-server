@@ -35,6 +35,11 @@ func testConfig(t *testing.T, kind string) *Config {
 	}
 }
 
+func mockPrompt() *PromptContext {
+	off := false
+	return &PromptContext{MemoryEnabled: &off, Headless: false}
+}
+
 func mockTool(name string) ToolDef {
 	return ToolDef{Type: "function", Function: ToolFunction{
 		Name: name, Parameters: json.RawMessage(`{"type":"object","properties":{"tool_title":{"type":"string"}}}`),
@@ -197,6 +202,7 @@ func TestClientToolRoundTrip(t *testing.T) {
 		RunID:     "run-client",
 		Model:     "mock-1",
 		Tools:     []ToolDef{mockTool("memory_get")},
+		Prompt:    mockPrompt(),
 		Messages: []WireMessage{{
 			Role:  "user",
 			Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}},
@@ -1295,6 +1301,7 @@ func TestRunEventReplay(t *testing.T) {
 	req := RunRequest{
 		SessionID: "sess-replay", RunID: "run-replay", Model: "mock-1",
 		Tools:    []ToolDef{mockTool("memory_get")},
+		Prompt:   mockPrompt(),
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
 	}
 	body, _ := json.Marshal(req)
@@ -1368,6 +1375,7 @@ func TestRunSteering(t *testing.T) {
 	req := RunRequest{
 		SessionID: "sess-steer", RunID: "run-steer", Model: "mock-1",
 		Tools:    []ToolDef{mockTool("memory_get")},
+		Prompt:   mockPrompt(),
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
 	}
 	body, _ := json.Marshal(req)
@@ -1616,6 +1624,7 @@ func TestCancelStopsRun(t *testing.T) {
 	req := RunRequest{
 		SessionID: "sess-cancel", RunID: "run-cancel", Model: "mock-1",
 		Tools:    []ToolDef{mockTool("memory_get")},
+		Prompt:   mockPrompt(),
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "please [[client:memory_get]]"}}}},
 	}
 	body, _ := json.Marshal(req)
@@ -1783,6 +1792,7 @@ func TestClientToolImageResult(t *testing.T) {
 
 	req := RunRequest{SessionID: "sess-imgtool", RunID: "run-imgtool", Model: "mock-1",
 		Tools:    []ToolDef{mockTool("read_image")},
+		Prompt:   mockPrompt(),
 		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "look [[client:read_image]]"}}}}}
 	body, _ := json.Marshal(req)
 	hreq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/agent/runs", bytes.NewReader(body))
@@ -2339,5 +2349,24 @@ func TestProviderIdleTimeoutOverride(t *testing.T) {
 	}
 	if got := (&Provider{IdleTimeoutSec: 120}).idleTimeout(); got != 2*time.Minute {
 		t.Fatalf("configured idle timeout = %s", got)
+	}
+}
+
+func TestBareAPIRunIsHeadless(t *testing.T) {
+	_, ts := testServer(t, "mock")
+	frames := runSSE(t, ts, RunRequest{
+		SessionID: "sess-bare", RunID: "run-bare", Model: "mock-1",
+		Tools:    []ToolDef{mockTool("memory_get")},
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "run [[client:memory_get]]"}}}},
+	})
+	for _, f := range frames {
+		if f.Event == "await_client" {
+			t.Fatal("bare API run waited for a device tool")
+		}
+		if f.Event == "tool_result" {
+			if f.Data["is_error"] != true || !strings.Contains(fmt.Sprint(f.Data["content"]), "paired Android app") {
+				t.Fatalf("headless tool result = %+v", f.Data)
+			}
+		}
 	}
 }

@@ -299,6 +299,12 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	if req.Headless {
 		run.Headless = true
 	}
+	if req.Prompt == nil && strings.TrimSpace(req.System) == "" {
+		// Neither structured prompt state nor a legacy system prompt means
+		// there is no paired app behind this request. Do not advertise device
+		// tools or wait for a tool result that can never arrive.
+		run.Headless = true
+	}
 	if run.Headless && req.Prompt != nil {
 		pc := *req.Prompt
 		pc.Headless = true
