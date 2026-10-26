@@ -275,6 +275,7 @@ func (a *sandboxAgent) readFile(w http.ResponseWriter, r *http.Request) {
 		Offset    int    `json:"offset"`
 		Lines     int    `json:"lines"`
 		MaxLength int    `json:"max_length"`
+		Direction string `json:"direction"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1*1024*1024))
 	if err := dec.Decode(&req); err != nil {
@@ -286,7 +287,7 @@ func (a *sandboxAgent) readFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	content, err := sb.ReadFile(req.Path, req.Offset, req.Lines, req.MaxLength)
+	content, err := sb.ReadFileDirection(req.Path, req.Offset, req.Lines, req.MaxLength, req.Direction)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

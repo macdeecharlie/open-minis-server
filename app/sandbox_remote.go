@@ -167,13 +167,18 @@ func (r *remoteSandbox) RunShell(ctx context.Context, command string, timeout ti
 }
 
 func (r *remoteSandbox) ReadFile(p string, offset int, lines int, maxLength int) (string, error) {
+	return r.ReadFileDirection(p, offset, lines, maxLength, "head")
+}
+
+func (r *remoteSandbox) ReadFileDirection(p string, offset int, lines int, maxLength int, direction string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	var out struct {
 		Content string `json:"content"`
 	}
 	err := r.postJSON(ctx, "/v1/files/read", map[string]any{
-		"session_id": r.session, "path": p, "offset": offset, "lines": lines, "max_length": maxLength,
+		"session_id": r.session, "path": p, "offset": offset, "lines": lines,
+		"max_length": maxLength, "direction": direction,
 	}, &out)
 	if err != nil {
 		return "", err

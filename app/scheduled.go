@@ -327,7 +327,7 @@ func (s *Server) runScheduled(ctx context.Context, t *ScheduledTask) (string, st
 		Model:         t.Model,
 		System:        "",
 		Messages:      msgs,
-		Tools:         s.buildTools(nil),
+		Tools:         s.buildTools(nil, true),
 		MaxTurns:      20,
 		MaxTokens:     8192,
 		Thinking:      t.Thinking,

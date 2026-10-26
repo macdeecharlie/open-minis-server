@@ -402,7 +402,7 @@ func TestBuildToolsIncludesClientTools(t *testing.T) {
 		{Type: "function", Function: ToolFunction{Name: "browser_use", Description: "client", Parameters: []byte(`{"type":"object"}`)}},
 		{Type: "function", Function: ToolFunction{Name: "device_ping", Description: "client", Parameters: []byte(`{"type":"object"}`)}},
 	}
-	out := s.buildTools(defs)
+	out := s.buildTools(defs, false)
 	byName := map[string]string{}
 	for _, d := range out {
 		byName[d.Function.Name] = d.Function.Description
@@ -412,6 +412,19 @@ func TestBuildToolsIncludesClientTools(t *testing.T) {
 	}
 	if !strings.Contains(byName["shell_execute"], "Debian") {
 		t.Fatalf("server shell description not corrected: %+v", byName)
+	}
+	if _, ok := byName["web_fetch"]; ok {
+		t.Fatalf("interactive run gained a non-official web tool: %+v", byName)
+	}
+	headless := s.buildTools(defs, true)
+	hasWeb := false
+	for _, d := range headless {
+		if d.Function.Name == "web_fetch" {
+			hasWeb = true
+		}
+	}
+	if !hasWeb {
+		t.Fatal("headless run should have web_fetch")
 	}
 }
 
@@ -2439,5 +2452,63 @@ func TestGlobalStorePathsAreMapped(t *testing.T) {
 	}
 	if err := sb.Upload("/var/minis/anything/escape.txt", []byte("x")); err == nil {
 		t.Fatal("unknown global path should be confined")
+	}
+}
+
+func TestTerminalSanitizer(t *testing.T) {
+	raw := "\x1b[31mred\x1b[0m\r\nprogress 10%\rprogress 100%\n\n\nnull\nnullnull\nend\x00"
+	got := sanitizeTerminalOutput(raw)
+	if strings.Contains(got, "\x1b") || strings.ContainsAny(got, "\x00\r") {
+		t.Fatalf("control bytes survived: %q", got)
+	}
+	if !strings.Contains(got, "progress 100%") || !strings.Contains(got, "end") {
+		t.Fatalf("sanitized = %q", got)
+	}
+	if strings.Contains(got, "null") {
+		t.Fatalf("null artifacts survived: %q", got)
+	}
+	if strings.Contains(got, "\n\n\n") {
+		t.Fatalf("blank run survived: %q", got)
+	}
+	long := strings.Repeat("a", 60_000)
+	out := truncateMiddle(long, 50_000)
+	if !strings.Contains(out, "10000 characters omitted") {
+		t.Fatalf("truncation marker missing")
+	}
+	if got := formatShellResult("", 0, false); got != "(no output)" {
+		t.Fatalf("empty = %q", got)
+	}
+	if got := formatShellResult("boom", 2, false); !strings.HasSuffix(got, "(exit code: 2)") {
+		t.Fatalf("failure = %q", got)
+	}
+	if got := formatShellResult("slow", -1, true); !strings.HasSuffix(got, "(exit code: 124)") {
+		t.Fatalf("timeout = %q", got)
+	}
+}
+
+func TestReadFileDirectionAndTruncation(t *testing.T) {
+	dir := t.TempDir()
+	sb, err := NewSandbox(SandboxConfig{WorkRoot: dir, MaxOutput: 1000}, "sess-read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for i := 1; i <= 100; i++ {
+		lines = append(lines, fmt.Sprintf("line %03d", i))
+	}
+	if err := sb.WriteFile("/var/minis/workspace/lines.txt", strings.Join(lines, "\n"), false, true); err != nil {
+		t.Fatal(err)
+	}
+	head, err := sb.ReadFileDirection("/var/minis/workspace/lines.txt", 1, 5, 1000, "head")
+	if err != nil || !strings.Contains(head, "showing 1-5 of 100") || !strings.Contains(head, "line 001") || strings.Contains(head, "line 006") {
+		t.Fatalf("head = %q err=%v", head, err)
+	}
+	tail, err := sb.ReadFileDirection("/var/minis/workspace/lines.txt", 1, 5, 1000, "tail")
+	if err != nil || !strings.Contains(tail, "showing 96-100 of 100") || !strings.Contains(tail, "line 100") || strings.Contains(tail, "line 095") {
+		t.Fatalf("tail = %q err=%v", tail, err)
+	}
+	truncated, err := sb.ReadFileDirection("/var/minis/workspace/lines.txt", 1, 0, 50, "head")
+	if err != nil || !strings.Contains(truncated, "truncated at 50 chars") || !strings.Contains(truncated, "next_offset=") {
+		t.Fatalf("truncated = %q err=%v", truncated, err)
 	}
 }

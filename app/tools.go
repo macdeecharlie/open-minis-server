@@ -98,7 +98,7 @@ func clientOwnedCall(name string, args json.RawMessage) bool {
 	return false
 }
 
-func (s *Server) buildTools(client []ToolDef) []ToolDef {
+func (s *Server) buildTools(client []ToolDef, headless bool) []ToolDef {
 	provided := map[string]ToolDef{}
 	for _, t := range client {
 		if t.Function.Name == "" {
@@ -126,11 +126,17 @@ func (s *Server) buildTools(client []ToolDef) []ToolDef {
 			seen[name] = true
 		}
 	}
-	out = append(out, builtinTool("web_fetch"))
-	seen["web_fetch"] = true
-	if s.cfg.SearXNGURL != "" {
-		out = append(out, builtinTool("web_search"))
-		seen["web_search"] = true
+	// The official app has no web_fetch/web_search tools: browser_use owns
+	// web access, and adding a second path changes which tool the model picks.
+	// Headless server runs have no paired browser, so they get explicit server
+	// web tools instead.
+	if headless {
+		out = append(out, builtinTool("web_fetch"))
+		seen["web_fetch"] = true
+		if s.cfg.SearXNGURL != "" {
+			out = append(out, builtinTool("web_search"))
+			seen["web_search"] = true
+		}
 	}
 	// Every other tool the client offered is a client-executed tool (browser,
 	// memory, user ask, sub agents, read_image, ...). It stays in the schema
@@ -157,7 +163,7 @@ func builtinTool(name string) ToolDef {
 	var params map[string]any
 	switch name {
 	case "shell_execute":
-		desc = "Execute a command in the remote Linux workspace. Use it for anything the file tools cannot do. The command runs as an unprivileged user in the session workspace."
+		desc = "Execute a command in the dedicated full Debian Linux container. The shell runs as root, so apt-get/apt are available. The working directory is the session workspace."
 		params = map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -178,6 +184,7 @@ func builtinTool(name string) ToolDef {
 				"offset":     map[string]any{"type": "integer", "description": "1-based first line."},
 				"lines":      map[string]any{"type": "integer", "description": "Maximum lines to return."},
 				"max_length": map[string]any{"type": "integer", "description": "Maximum characters (default 15000, hard cap 80000)."},
+				"direction":  map[string]any{"type": "string", "description": "Read direction: head (default) or tail."},
 			},
 			"required": []string{"tool_title", "path"},
 		}
@@ -291,30 +298,31 @@ func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, r
 			res.Content, res.IsError = "Error: "+err.Error(), true
 			return res
 		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "Exit code: %d\n", out.ExitCode)
-		if out.TimedOut {
-			b.WriteString("Status: timed out\n")
-		}
-		b.WriteString("\n")
-		b.WriteString(out.Output)
-		if strings.TrimSpace(out.Output) == "" {
-			b.WriteString("(no output)")
-		}
-		res.Content = b.String()
-		res.IsError = out.ExitCode != 0
+		res.Content = formatShellResult(out.Output, out.ExitCode, out.TimedOut)
+		res.IsError = out.ExitCode != 0 || out.TimedOut
 	case "file_read":
 		p := str("path")
 		if p == "" {
 			res.Content, res.IsError = "Error: 'path' is required", true
 			return res
 		}
-		content, err := sb.ReadFile(p, integer("offset", 1), integer("lines", 0), integer("max_length", 15000))
+		var content string
+		var err error
+		if rd, ok := sb.(interface {
+			ReadFileDirection(string, int, int, int, string) (string, error)
+		}); ok {
+			content, err = rd.ReadFileDirection(p, integer("offset", 1), integer("lines", 0), integer("max_length", 15000), str("direction"))
+		} else {
+			content, err = sb.ReadFile(p, integer("offset", 1), integer("lines", 0), integer("max_length", 15000))
+		}
 		if err != nil {
 			res.Content, res.IsError = "Error: "+err.Error(), true
 			return res
 		}
 		res.Content = content
+		if strings.Contains(content, "binary file — cannot display contents") {
+			res.IsError = true
+		}
 		if u := minisURL(p); u != "" {
 			res.Content += "\n\nminis_url: " + u
 		}
@@ -332,7 +340,7 @@ func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, r
 			res.Content, res.IsError = "Error: "+err.Error(), true
 			return res
 		}
-		res.Content = fmt.Sprintf("Wrote %d bytes to %s", len(content), p)
+		res.Content = fmt.Sprintf("Wrote to %s (%d bytes)", p, len(content))
 		if u := minisURL(p); u != "" {
 			res.Content += "\nminis_url: " + u
 		}
@@ -351,7 +359,14 @@ func (s *Server) executeTool(ctx context.Context, sb ToolSandbox, name string, r
 			res.Content, res.IsError = "Error: "+err.Error(), true
 			return res
 		}
-		res.Content = fmt.Sprintf("Replaced %d occurrence(s) in %s", n, p)
+		newLen := len(newS) * n
+		if !boolean("replace_all") {
+			newLen = len(newS)
+		}
+		if raw, _, rerr := sb.ReadRaw(p); rerr == nil {
+			newLen = len(raw)
+		}
+		res.Content = fmt.Sprintf("Edited %s (%d replacement(s), %d bytes)", p, n, newLen)
 		if u := minisURL(p); u != "" {
 			res.Content += "\nminis_url: " + u
 		}

@@ -367,7 +367,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 	maxTokens := req.MaxTokens
 
-	tools := s.buildTools(req.Tools)
+	tools := s.buildTools(req.Tools, run.Headless)
 	if run.Headless {
 		tools = serverToolsOnly(tools)
 	}

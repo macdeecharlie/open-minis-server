@@ -414,6 +414,14 @@ func (s *Sandbox) runPreparedCommand(runCtx context.Context, cmd *exec.Cmd, time
 	return res, nil
 }
 func (s *Sandbox) ReadFile(p string, offset int, lines int, maxLength int) (string, error) {
+	return s.ReadFileDirection(p, offset, lines, maxLength, "head")
+}
+
+// ReadFileDirection mirrors FileReadTool.read: 1-based offset, optional line
+// cap, head/tail direction, binary detection, a metadata header and
+// newline-aware truncation with next_offset. Reading streams the file so a
+// multi-gigabyte log cannot exhaust server memory.
+func (s *Sandbox) ReadFileDirection(p string, offset int, lines int, maxLength int, direction string) (string, error) {
 	path, err := s.virtualPath(p)
 	if err != nil {
 		return "", err
@@ -441,47 +449,155 @@ func (s *Sandbox) ReadFile(p string, offset int, lines int, maxLength int) (stri
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	if maxLength <= 0 || maxLength > 80_000 {
+	if maxLength <= 0 {
+		maxLength = 15000
+	}
+	if maxLength > 80_000 {
 		maxLength = 80_000
 	}
 	if offset < 1 {
 		offset = 1
 	}
+	if lines < 0 {
+		return "", errors.New("'lines' must not be negative")
+	}
+	tail := strings.EqualFold(strings.TrimSpace(direction), "tail")
+	reader := bufio.NewReaderSize(f, 64*1024)
+	if tail {
+		return readTail(reader, p, st.Size(), lines, maxLength)
+	}
 	var selected []string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	lineNo := 0
+	var content strings.Builder
 	total := 0
-	for sc.Scan() {
-		total++
-		lineNo++
-		if lineNo < offset {
-			continue
+	selectedCount := 0
+	for {
+		line, rerr := reader.ReadString('\n')
+		if len(line) > 0 {
+			line = strings.TrimSuffix(line, "\n")
+			line = strings.TrimSuffix(line, "\r")
+			total++
+			if total >= offset && (lines <= 0 || selectedCount < lines) {
+				selectedCount++
+				if content.Len() <= maxLength+1<<20 {
+					selected = append(selected, line)
+					content.WriteString(line)
+					content.WriteByte('\n')
+				}
+			}
 		}
-		if lines > 0 && len(selected) >= lines {
-			continue
+		if rerr == io.EOF {
+			break
 		}
-		selected = append(selected, sc.Text())
+		if rerr != nil {
+			return "", rerr
+		}
 	}
-	if err := sc.Err(); err != nil {
-		return "", err
+	body := strings.Join(selected, "\n")
+	if len(selected) > 0 && strings.HasSuffix(content.String(), "\n") {
+		// Join already represents the separators; nothing to remove.
 	}
-	content := strings.Join(selected, "\n")
+	showStart := offset
+	showEnd := offset + selectedCount - 1
+	if selectedCount == 0 {
+		showEnd = offset - 1
+	}
+	activeStart, activeEnd := showStart, showEnd
+	nextOffset := 0
 	truncated := false
-	if len(content) > maxLength {
-		content = content[:maxLength]
+	if len(body) > maxLength {
 		truncated = true
+		body = truncateRunes(body, maxLength, false)
+		if i := strings.LastIndexByte(body, '\n'); i > 0 {
+			body = body[:i]
+		}
+		activeEnd = showStart + strings.Count(body, "\n")
+		if activeEnd < total {
+			nextOffset = activeEnd + 1
+		}
 	}
-	end := offset + len(selected) - 1
-	if len(selected) == 0 {
-		end = offset - 1
-	}
-	header := fmt.Sprintf("[%s | %d bytes | %d lines | showing %d-%d of %d", p, st.Size(), total, offset, end, total)
+	header := fmt.Sprintf("[%s | %d bytes | %d lines | showing %d-%d of %d", p, st.Size(), total, activeStart, activeEnd, total)
 	if truncated {
 		header += fmt.Sprintf(" | truncated at %d chars", maxLength)
+		if nextOffset > 0 {
+			header += fmt.Sprintf(", next_offset=%d", nextOffset)
+		} else {
+			header += ", retry with a smaller lines value"
+		}
 	}
 	header += "]"
-	return header + "\n" + content, nil
+	return header + "\n" + body, nil
+}
+
+func readTail(reader *bufio.Reader, p string, size int64, lines, maxLength int) (string, error) {
+	limit := maxLength * 2
+	if limit < 64*1024 {
+		limit = 64 * 1024
+	}
+	ring := make([]byte, 0, limit)
+	total := 0
+	sawAny := false
+	for {
+		line, rerr := reader.ReadString('\n')
+		if len(line) > 0 {
+			total++
+			sawAny = true
+			ring = append(ring, line...)
+			if len(ring) > limit {
+				ring = append([]byte(nil), ring[len(ring)-limit:]...)
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return "", rerr
+		}
+	}
+	_ = sawAny
+	text := strings.TrimSuffix(string(ring), "\n")
+	all := strings.Split(text, "\n")
+	selectedCount := len(all)
+	if lines > 0 && selectedCount > lines {
+		all = all[len(all)-lines:]
+		selectedCount = len(all)
+	}
+	if total == 0 {
+		selectedCount = 0
+		all = nil
+	}
+	showStart := total - selectedCount + 1
+	if selectedCount == 0 {
+		showStart = 1
+	}
+	showEnd := total
+	body := strings.Join(all, "\n")
+	activeStart := showStart
+	truncated := false
+	if len(body) > maxLength {
+		truncated = true
+		body = truncateRunes(body, maxLength, true)
+		if i := strings.IndexByte(body, '\n'); i >= 0 && i < len(body)-1 {
+			body = body[i+1:]
+		}
+		activeStart = showEnd - strings.Count(body, "\n")
+	}
+	header := fmt.Sprintf("[%s | %d bytes | %d lines | showing %d-%d of %d", p, size, total, activeStart, showEnd, total)
+	if truncated {
+		header += fmt.Sprintf(" | truncated at %d chars, retry with a smaller lines value", maxLength)
+	}
+	header += "]"
+	return header + "\n" + body, nil
+}
+
+func truncateRunes(s string, max int, tail bool) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if tail {
+		return string(r[len(r)-max:])
+	}
+	return string(r[:max])
 }
 
 func (s *Sandbox) WriteFile(p, content string, appendMode bool, createDirs bool) error {
