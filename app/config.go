@@ -61,6 +61,10 @@ type Model struct {
 	Headers           map[string]string `json:"headers,omitempty"`
 	ExtraBody         json.RawMessage   `json:"extra_body,omitempty"`
 	ServiceTier       string            `json:"service_tier,omitempty"`
+	// ThinkingParams is the app's resolved vendor thinking body (Qwen/DeepSeek/
+	// OpenRouter/custom rules), merged verbatim into OpenAI-compatible requests.
+	ThinkingParams    map[string]any `json:"thinking_params,omitempty"`
+	ThinkingParamsSet bool           `json:"thinking_params_set,omitempty"`
 }
 
 type UpdateConfig struct {

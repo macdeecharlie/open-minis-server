@@ -18,7 +18,8 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if shouldUseResponsesAPI(p.cfg.BaseURL, req.Model.ID) {
 		return (&responsesProvider{cfg: p.cfg, http: p.http}).Stream(ctx, req, emit)
 	}
-	msgs, err := openAIMessages(req.Messages, modelSupportsImages(req.Model), suppressReasoningEcho(p.cfg.BaseURL, req.Model.ID))
+	echoReasoning := req.Model.SupportsReasoning && !suppressReasoningEcho(p.cfg.BaseURL, req.Model.ID)
+	msgs, err := openAIMessages(req.Messages, modelSupportsImages(req.Model), echoReasoning)
 	if err != nil {
 		return ProviderResult{}, err
 	}
@@ -42,7 +43,11 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		body["tools"] = req.Tools
 		body["tool_choice"] = "auto"
 	}
-	if effort := openAIReasoningEffortFor(p.cfg.BaseURL, req.Model, req.Thinking); effort != "" {
+	if req.Model.ThinkingParamsSet {
+		for k, v := range req.Model.ThinkingParams {
+			body[k] = v
+		}
+	} else if effort := openAIReasoningEffortFor(p.cfg.BaseURL, req.Model, req.Thinking); effort != "" {
 		body["reasoning_effort"] = effort
 	}
 	if req.Model.Temperature != nil && !thinkingEnabled(req.Thinking) {
@@ -284,7 +289,7 @@ func mapOpenAIStop(s string) string {
 	}
 }
 
-func openAIMessages(msgs []WireMessage, supportsImages, suppressReasoning bool) ([]map[string]any, error) {
+func openAIMessages(msgs []WireMessage, supportsImages, echoReasoning bool) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
@@ -315,7 +320,10 @@ func openAIMessages(msgs []WireMessage, supportsImages, suppressReasoning bool) 
 			if text == "" && len(toolCalls) == 0 {
 				continue
 			}
-			if strings.TrimSpace(m.ReasoningContent) != "" && !suppressReasoning {
+			if echoReasoning {
+				// Presence is load-bearing for DeepSeek V4 / MiMo: the empty
+				// string satisfies their multi-turn schema without a learnable
+				// placeholder. Mistral/Cerebras are excluded by the caller.
 				msg["reasoning_content"] = m.ReasoningContent
 			}
 			out = append(out, msg)

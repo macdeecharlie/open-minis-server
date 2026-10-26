@@ -2824,3 +2824,45 @@ func TestProviderQuotaHeadersForwarded(t *testing.T) {
 		t.Fatalf("quota headers missing: %+v", frames)
 	}
 }
+
+func TestModelThinkingParamsOverride(t *testing.T) {
+	var body map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	p := &openAIProvider{cfg: &Provider{Kind: "openai", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{
+			ID: "qwen3", SupportsReasoning: true, ThinkingParamsSet: true, ThinkingParams: map[string]any{
+				"enable_thinking": true, "thinking_budget": float64(4096),
+			},
+		},
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}}, Thinking: "high",
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["enable_thinking"] != true || body["thinking_budget"] != float64(4096) {
+		t.Fatalf("thinking params = %+v", body)
+	}
+	if _, ok := body["reasoning_effort"]; ok {
+		t.Fatalf("resolver params should replace server effort: %+v", body)
+	}
+}
+
+func TestOpenAIReasoningEchoPresence(t *testing.T) {
+	msgs, err := openAIMessages([]WireMessage{
+		{Role: "assistant", Parts: []WirePart{{Type: "tool_use", ID: "c1", Name: "x", Args: json.RawMessage(`{}`)}}},
+		{Role: "user", Parts: []WirePart{{Type: "tool_result", ID: "c1", Name: "x", Content: "ok"}}},
+	}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := msgs[0]["reasoning_content"].(string)
+	if !ok || got != "" {
+		t.Fatalf("reasoning_content presence = %+v", msgs[0])
+	}
+}

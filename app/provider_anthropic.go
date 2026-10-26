@@ -46,13 +46,17 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if req.Model.TopP != nil && !thinkingEnabled(req.Thinking) {
 		body["top_p"] = *req.Model.TopP
 	}
-	if strings.TrimSpace(req.System) != "" {
+	system := req.System
+	if prefix := strings.TrimSpace(p.cfg.SystemPrefix); prefix != "" && !strings.HasPrefix(system, prefix) {
+		system = prefix + "\n\n" + system
+	}
+	if strings.TrimSpace(system) != "" {
 		// Cache the stable prompt head (identity, tool rules, skills). The
 		// runtime suffix is part of the same block; Anthropic caches the
 		// longest matching prefix across requests, which is exactly the
 		// Android prompt layout.
 		body["system"] = []map[string]any{{
-			"type": "text", "text": req.System,
+			"type": "text", "text": system,
 			"cache_control": map[string]any{"type": "ephemeral"},
 		}}
 	}

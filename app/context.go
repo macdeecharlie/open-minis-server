@@ -244,8 +244,14 @@ func (s *Server) summarizeMessages(ctx context.Context, provider ProviderClient,
 		}
 		return first + "\n\n" + second, nil
 	}
+	compactModel := *model
+	// The app's thinking_params were resolved for the user's chat level, not
+	// for an OFF compaction call. Suppress them and let the provider's OFF
+	// semantics apply.
+	compactModel.ThinkingParams = nil
+	compactModel.ThinkingParamsSet = true
 	req := ProviderRequest{
-		Model:  model,
+		Model:  &compactModel,
 		System: compactSystemPrompt,
 		Messages: []WireMessage{{
 			Role:  "user",
