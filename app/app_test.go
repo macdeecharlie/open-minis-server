@@ -1830,3 +1830,138 @@ func TestClientToolImageResult(t *testing.T) {
 		t.Fatalf("image tool result was not persisted: %+v", msgs)
 	}
 }
+
+func TestTerminalReattach(t *testing.T) {
+	agent := &sandboxAgent{
+		token: "t", workRoot: t.TempDir(), maxOutput: 10000,
+		terminals: newTerminalManager(false, t.TempDir()),
+	}
+	ts := httptest.NewServer(agent.handler())
+	defer ts.Close()
+
+	body := strings.NewReader(`{"session_id":"sess-reattach","cols":100,"rows":30}`)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/terminal", body)
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	termID := ""
+	received := int64(0)
+	sent := false
+	readUntil := func(want string) {
+		deadline := time.Now().Add(10 * time.Second)
+		for sc.Scan() {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %q", want)
+			}
+			line := sc.Text()
+			if strings.HasPrefix(line, "event:") {
+				continue
+			}
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			var d map[string]any
+			_ = json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &d)
+			if id, ok := d["id"].(string); ok && termID == "" {
+				termID = id
+			}
+			if enc, ok := d["data"].(string); ok {
+				raw, _ := base64.StdEncoding.DecodeString(enc)
+				off, _ := d["offset"].(float64)
+				received = int64(off) + int64(len(raw))
+				if strings.Contains(string(raw), want) {
+					return
+				}
+			}
+		}
+		t.Fatalf("stream ended waiting for %q", want)
+	}
+	send := func(text string) {
+		ireq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/terminal/"+termID+"/input", strings.NewReader(text))
+		ireq.Header.Set("Authorization", "Bearer t")
+		iresp, err := http.DefaultClient.Do(ireq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		iresp.Body.Close()
+	}
+	// First event is ready; scanner helper skips it, so send after a short
+	// read of the ready frame.
+	for sc.Scan() {
+		if strings.HasPrefix(sc.Text(), "event: ready") {
+			// data line follows
+			sc.Scan()
+			var d map[string]any
+			_ = json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(sc.Text(), "data:"))), &d)
+			termID, _ = d["id"].(string)
+			break
+		}
+	}
+	if termID == "" {
+		t.Fatal("no terminal id")
+	}
+	send("echo first-ok\r")
+	sent = true
+	_ = sent
+	readUntil("first-ok")
+	resp.Body.Close()
+	time.Sleep(100 * time.Millisecond)
+
+	areq, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/v1/terminal/%s?after=%d", ts.URL, termID, received), nil)
+	areq.Header.Set("Authorization", "Bearer t")
+	aresp, err := http.DefaultClient.Do(areq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer aresp.Body.Close()
+	asc := bufio.NewScanner(aresp.Body)
+	asc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for asc.Scan() {
+		if strings.HasPrefix(asc.Text(), "event: ready") {
+			break
+		}
+	}
+	// New input while attached.
+	ireq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/terminal/"+termID+"/input", strings.NewReader("echo second-ok\r"))
+	ireq.Header.Set("Authorization", "Bearer t")
+	iresp, err := http.DefaultClient.Do(ireq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iresp.Body.Close()
+	deadline := time.Now().Add(10 * time.Second)
+	ok := false
+	for asc.Scan() {
+		if time.Now().After(deadline) {
+			break
+		}
+		line := asc.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var d map[string]any
+		_ = json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &d)
+		if enc, okEnc := d["data"].(string); okEnc {
+			raw, _ := base64.StdEncoding.DecodeString(enc)
+			if strings.Contains(string(raw), "second-ok") {
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		t.Fatal("reattached terminal did not receive input/output")
+	}
+	creq, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/terminal/"+termID+"/close", nil)
+	creq.Header.Set("Authorization", "Bearer t")
+	cresp, err := http.DefaultClient.Do(creq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cresp.Body.Close()
+}

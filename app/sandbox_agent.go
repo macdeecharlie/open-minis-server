@@ -91,6 +91,7 @@ func (a *sandboxAgent) handler() http.Handler {
 	mux.Handle("POST /v1/files/rename", a.auth(http.HandlerFunc(a.renameFile)))
 	mux.Handle("POST /v1/files/mkdir", a.auth(http.HandlerFunc(a.mkdir)))
 	mux.Handle("POST /v1/terminal", a.terminalHandler(a.terminals))
+	mux.Handle("GET /v1/terminal/{id}", a.terminalAttach(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/input", a.terminalInput(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/resize", a.terminalResize(a.terminals))
 	mux.Handle("POST /v1/terminal/{id}/close", a.terminalClose(a.terminals))

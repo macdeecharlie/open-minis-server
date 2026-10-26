@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -15,14 +16,25 @@ import (
 	"github.com/creack/pty"
 )
 
+const terminalScrollback = 1 << 20 // 1 MiB per terminal
+
+// terminal keeps the PTY and its output independent of any one SSE
+// connection. A dropped mobile connection can reattach to the same shell and
+// resume from a byte offset instead of losing the session.
 type terminal struct {
 	id      string
 	session string
-	mu      sync.Mutex
-	ptmx    *os.File
-	cmd     *exec.Cmd
-	cols    int
-	rows    int
+
+	mu    sync.Mutex
+	ptmx  *os.File
+	cmd   *exec.Cmd
+	cols  int
+	rows  int
+	dead  bool
+	wake  chan struct{}
+	outMu sync.Mutex
+	out   []byte // scrollback; outOffset is the absolute offset of out[0]
+	outAt int64
 }
 
 type terminalManager struct {
@@ -93,10 +105,12 @@ func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, er
 		cmd:     cmd,
 		cols:    cols,
 		rows:    rows,
+		wake:    make(chan struct{}, 1),
 	}
 	m.mu.Lock()
 	m.terms[t.id] = t
 	m.mu.Unlock()
+	go t.readLoop()
 	return t, nil
 }
 
@@ -112,21 +126,60 @@ func (m *terminalManager) remove(id string) {
 	m.mu.Unlock()
 }
 
+func (t *terminal) signal() {
+	select {
+	case t.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (t *terminal) readLoop() {
+	buf := make([]byte, 32*1024)
+	for {
+		t.mu.Lock()
+		ptmx := t.ptmx
+		t.mu.Unlock()
+		if ptmx == nil {
+			return
+		}
+		n, err := ptmx.Read(buf)
+		if n > 0 {
+			t.outMu.Lock()
+			t.out = append(t.out, buf[:n]...)
+			if len(t.out) > terminalScrollback {
+				drop := len(t.out) - terminalScrollback
+				t.out = append([]byte(nil), t.out[drop:]...)
+				t.outAt += int64(drop)
+			}
+			t.outMu.Unlock()
+			t.signal()
+		}
+		if err != nil {
+			t.mu.Lock()
+			t.dead = true
+			t.mu.Unlock()
+			t.signal()
+			return
+		}
+	}
+}
+
 func (t *terminal) close() {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.ptmx != nil {
-		_ = t.ptmx.Close()
-		t.ptmx = nil
-	}
-	if t.cmd != nil && t.cmd.Process != nil {
-		proc := t.cmd
-		_ = syscall.Kill(-proc.Process.Pid, syscall.SIGKILL)
-		// Reap the child; otherwise every closed terminal leaves a zombie
-		// because the sandbox agent is PID 1 and has no init to adopt it.
-		go func() { _ = proc.Wait() }()
-	}
+	ptmx := t.ptmx
+	cmd := t.cmd
+	t.ptmx = nil
 	t.cmd = nil
+	t.dead = true
+	t.mu.Unlock()
+	if ptmx != nil {
+		_ = ptmx.Close()
+	}
+	if cmd != nil && cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		go func() { _ = cmd.Wait() }()
+	}
+	t.signal()
 }
 
 func (t *terminal) write(data []byte) error {
@@ -152,7 +205,27 @@ func (t *terminal) resize(cols, rows int) error {
 	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
-func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, term *terminal, mgr *terminalManager) {
+func (t *terminal) snapshot(after int64) (chunk []byte, next int64, closed bool) {
+	t.outMu.Lock()
+	defer t.outMu.Unlock()
+	if after < t.outAt {
+		after = t.outAt
+	}
+	start := after - t.outAt
+	if start < 0 {
+		start = 0
+	}
+	if start < int64(len(t.out)) {
+		chunk = append([]byte(nil), t.out[start:]...)
+	}
+	next = t.outAt + int64(len(t.out))
+	t.mu.Lock()
+	closed = t.dead
+	t.mu.Unlock()
+	return
+}
+
+func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, term *terminal, mgr *terminalManager, after int64) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming unsupported")
@@ -171,50 +244,28 @@ func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, te
 		flusher.Flush()
 		return true
 	}
-	if !writeEvent("ready", map[string]any{"id": term.id, "session_id": term.session, "cols": term.cols, "rows": term.rows}) {
+	if !writeEvent("ready", map[string]any{"id": term.id, "session_id": term.session, "cols": term.cols, "rows": term.rows, "offset": after}) {
 		return
 	}
-	out := make(chan []byte, 256)
-	exited := make(chan struct{})
-	go func() {
-		defer close(exited)
-		buf := make([]byte, 32*1024)
-		for {
-			term.mu.Lock()
-			ptmx := term.ptmx
-			term.mu.Unlock()
-			if ptmx == nil {
-				return
-			}
-			n, err := ptmx.Read(buf)
-			if n > 0 {
-				chunk := append([]byte(nil), buf[:n]...)
-				select {
-				case out <- chunk:
-				case <-r.Context().Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
-		select {
-		case chunk := <-out:
-			if !writeEvent("output", map[string]any{"data": base64.StdEncoding.EncodeToString(chunk)}) {
-				// The client disconnected. Keep the PTY alive so it can
-				// reattach to the same shell instead of losing its state.
+		chunk, next, closed := term.snapshot(after)
+		if len(chunk) > 0 {
+			if !writeEvent("output", map[string]any{"offset": after, "data": base64.StdEncoding.EncodeToString(chunk)}) {
 				return
 			}
-		case <-exited:
+			after = next
+			continue
+		}
+		if closed {
 			term.close()
 			mgr.remove(term.id)
 			writeEvent("exit", map[string]any{"reason": "process exited"})
 			return
+		}
+		select {
+		case <-term.wake:
 		case <-ticker.C:
 			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
 				return
@@ -246,11 +297,22 @@ func (a *sandboxAgent) terminalHandler(mgr *terminalManager) http.Handler {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		defer func() {
-			term.close()
-			mgr.remove(term.id)
-		}()
-		a.streamTerminal(w, r, term, mgr)
+		a.streamTerminal(w, r, term, mgr, 0)
+	}))
+}
+
+func (a *sandboxAgent) terminalAttach(mgr *terminalManager) http.Handler {
+	return a.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		term := mgr.get(r.PathValue("id"))
+		if term == nil {
+			writeError(w, http.StatusNotFound, "terminal not found")
+			return
+		}
+		after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+		if after < 0 {
+			after = 0
+		}
+		a.streamTerminal(w, r, term, mgr, after)
 	}))
 }
 

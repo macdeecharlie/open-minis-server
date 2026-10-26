@@ -78,6 +78,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/files/rename", s.auth(http.HandlerFunc(s.handleFileRename)))
 	mux.Handle("POST /v1/files/mkdir", s.auth(http.HandlerFunc(s.handleFileMkdir)))
 	mux.Handle("POST /v1/terminal", s.auth(http.HandlerFunc(s.handleTerminalStart)))
+	mux.Handle("GET /v1/terminal/{id}", s.auth(http.HandlerFunc(s.handleTerminalAttach)))
 	mux.Handle("POST /v1/terminal/{id}/input", s.auth(http.HandlerFunc(s.handleTerminalInput)))
 	mux.Handle("POST /v1/terminal/{id}/resize", s.auth(http.HandlerFunc(s.handleTerminalResize)))
 	mux.Handle("POST /v1/terminal/{id}/close", s.auth(http.HandlerFunc(s.handleTerminalClose)))

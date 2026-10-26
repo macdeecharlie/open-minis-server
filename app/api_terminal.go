@@ -70,6 +70,14 @@ func (s *Server) handleTerminalStart(w http.ResponseWriter, r *http.Request) {
 	s.proxySandbox(w, r, "/v1/terminal")
 }
 
+func (s *Server) handleTerminalAttach(w http.ResponseWriter, r *http.Request) {
+	path := "/v1/terminal/" + r.PathValue("id")
+	if after := r.URL.Query().Get("after"); after != "" {
+		path += "?after=" + after
+	}
+	s.proxySandbox(w, r, path)
+}
+
 func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	s.proxySandbox(w, r, "/v1/terminal/"+r.PathValue("id")+"/input")
 }
