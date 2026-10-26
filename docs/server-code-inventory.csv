@@ -3,16 +3,16 @@ path,lines,role
 .gitignore,18,server/deployment file
 README.md,216,server/deployment file
 app/admin.go,183,admin config endpoints
-app/agent.go,875,"agent loop, retries, fallback, tool dispatch, replay/steer"
+app/agent.go,882,"agent loop, retries, fallback, tool dispatch, replay/steer"
 app/api_cli.go,595,minis-* CLI API
 app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
 app/api_scheduled.go,53,scheduled task API
 app/api_terminal.go,91,terminal API proxy
-app/app_test.go,2027,test suite
+app/app_test.go,2127,test suite
 app/cli.go,666,minis-* CLI implementations
 app/config.go,295,configuration and validation
-app/context.go,523,"context estimator, compaction, offload, image budget, tool-pair repair"
+app/context.go,584,"context estimator, compaction, offload, image budget, tool-pair repair"
 app/go.mod,5,server/deployment file
 app/go.sum,2,server/deployment file
 app/main.go,88,entrypoint and role dispatch
@@ -25,20 +25,20 @@ app/prompt_memory_on.txt,11,server/deployment file
 app/prompt_url_browser.txt,1,server/deployment file
 app/prompt_url_plain.txt,1,server/deployment file
 app/provider.go,256,"provider HTTP, SSE, idle watchdog, error classification"
-app/provider_anthropic.go,352,"Anthropic wire, prompt cache"
-app/provider_gemini.go,237,"Gemini wire, thought signatures, audio"
+app/provider_anthropic.go,368,"Anthropic wire, prompt cache"
+app/provider_gemini.go,282,"Gemini wire, thought signatures, audio"
 app/provider_mock.go,129,offline test provider
 app/provider_openai.go,401,OpenAI-compatible wire
-app/provider_responses.go,342,server/deployment file
+app/provider_responses.go,380,server/deployment file
 app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
 app/sandbox_agent.go,507,sandbox container API
 app/sandbox_remote.go,299,server to sandbox client
-app/sandbox_terminal.go,371,PTY terminal
+app/sandbox_terminal.go,398,PTY terminal
 app/scheduled.go,474,server scheduler and headless runner
 app/server.go,486,"HTTP routes, SSE, sessions, files, terminal proxy, config"
-app/store.go,348,append-only session store
+app/store.go,360,append-only session store
 app/tools.go,738,"tool schemas, routing, execution, minis URLs"
-app/types.go,146,wire/config/session types
+app/types.go,147,wire/config/session types
 app/update.go,229,private release proxy
 app/vendor/github.com/creack/pty/.editorconfig,54,vendored third-party (creack/pty)
 app/vendor/github.com/creack/pty/.gitignore,4,vendored third-party (creack/pty)
@@ -111,9 +111,9 @@ docker/sandbox/mcp-cli/lib/utils/__init__.py,0,bundled MCP client (from the offi
 docker/sandbox/mcp-cli/lib/utils/config.py,196,bundled MCP client (from the official assets)
 docker/sandbox/mcp-cli/lib/utils/deps.py,70,bundled MCP client (from the official assets)
 docker/sandbox/minis-session-exec,27,sandbox image and deployment
-docs/agent-protocol.md,196,documentation
+docs/agent-protocol.md,202,documentation
 docs/architecture.md,123,documentation
-docs/parity-matrix.md,193,documentation
+docs/parity-matrix.md,201,documentation
 docs/verification.md,92,documentation
 scripts/android_inventory.py,338,inventory tooling
 scripts/server_inventory.py,96,inventory tooling

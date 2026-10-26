@@ -112,8 +112,10 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
    file. Other config fields are still app-only.
 5. **File browser write UI.** The server API supports list/read/upload/delete/
    rename/mkdir and the browser deletes server files. The File-backed browser
-   is still a cache, so upload/rename UI actions are absent and a same-size
-   edit may not refresh (`syncDir` compares size only); `@file` syncs on open.
+   is still a cache, so upload/rename UI actions are absent; same-size edits
+   now refresh by mtime. Tool images larger than the phone's 500 KB row cap are
+   omitted from the saved transcript (the tool pair survives), so they are
+   unavailable after a reload.
 6. **Backup/restore.** `.minisbak` format, crypto, merge and rclone transport
    remain in the app. The workspace is mirrored locally and is included, but
    server-only offloads/global state are not part of the phone archive.
@@ -171,7 +173,13 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
   `/workspace` is scoped to the current session.
 - Tool results include encoded `minis_url` links; request image budget, audio
   parts for OpenAI/Gemini, image-bearing tool results, orphan tool-pair repair
-  and provider idle timeouts are covered by tests.
+  and provider idle timeouts are covered by tests. Image token estimates are
+  pixel-bounded, the budget runs before every provider call, and single-turn
+  compaction keeps the original prompt while folding the tool middle.
+- Native OpenAI Responses (`kind: openai-responses`), Gemini thinking levels,
+  and unsigned reasoning replay to Anthropic-compatible proxies are covered by
+  tests; Responses handles `[DONE]`, cached-token accounting, `incomplete`
+  content filters and transient failure statuses.
 - Helper prompt fix (1.16.10) preserves the full parent brief on the server
   branch; server helper wrap-up gives the final deliverable round. Tool-result
   images round-trip from the client to OpenAI/Anthropic/Gemini and are persisted
