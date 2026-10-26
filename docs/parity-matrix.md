@@ -129,12 +129,10 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
    `minis-model-use`, OpenAI Responses-only models, signed Anthropic thinking
    replay, Gemini thinking levels and provider quota APIs are not implemented
    server-side.
-10. **Terminal reconnect.** A dropped SSE connection closes the sandbox PTY;
-    `RemoteTerminalSession` has no resume. The app must reopen it.
-11. **Sandbox persistence.** System packages installed with apt survive restarts
+10. **Sandbox persistence.** System packages installed with apt survive restarts
     but not an image rebuild; project dependencies should live in the
     workspace/venv.
-12. **Device PRoot boundary.** Device-bound commands still execute in the
+11. **Device PRoot boundary.** Device-bound commands still execute in the
     phone's existing PRoot shell (as the official app does); the server agent's
     shell/file/web execution is PRoot-free in the Debian container.
 
@@ -162,6 +160,9 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - `minis-config` pending/confirm flow verified live; config remains mode 600.
 - `minis-mcp-cli` verified inside the sandbox against a temporary stdio MCP
   server (`list`, `tools`, `call`).
+- Terminal reattach verified: after dropping the SSE response, a new
+  `GET /v1/terminal/{id}?after=N` stream receives input and output from the
+  same shell. The app reconnects with the byte offset and keeps the emulator.
 - Server file API verified end-to-end: list, upload, raw download, delete,
   rename, mkdir, and workspace removal on session delete.
 - Every shell/PTY command runs in a private mount namespace with real
@@ -186,7 +187,8 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 - Auxiliary `/v1/chat/completions` translation verified against a native
   Anthropic SSE upstream (streaming and non-streaming).
 - Request image budget and compaction/offload unit-tested.
-- Published: 1.16.12 build 50 (same stable signing key). 1.16.10 fixed the
-  helper prompt, 1.16.9 added audio/offload sync, 1.16.11 added image tool
-  results/signatures/title-compaction parity, and 1.16.12 persists tool-result
-  images in the local transcript.
+- Published: 1.16.12 build 50; 1.16.14 build 52 is the source release in CI.
+  1.16.10 fixed the helper prompt, 1.16.9 added audio/offload sync, 1.16.11
+  added image tool results/signatures/title-compaction parity, 1.16.12
+  persisted tool-result images, and 1.16.14 reattaches the terminal after a
+  dropped stream.
