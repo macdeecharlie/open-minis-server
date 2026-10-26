@@ -20,6 +20,9 @@ type responsesProvider struct {
 }
 
 func responsesRequestURL(cfg *Provider, modelID string) string {
+	if cfg.ResponsesPath != "" && !cfg.Azure {
+		return strings.TrimSuffix(cfg.BaseURL, "/") + "/" + strings.TrimPrefix(cfg.ResponsesPath, "/")
+	}
 	if cfg.Azure {
 		base, query := splitQuery(cfg.BaseURL)
 		return strings.TrimSuffix(base, "/") + "/openai/deployments/" + url.PathEscape(modelID) + "/responses" + query
@@ -89,6 +92,8 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 			reasoning["summary"] = "auto"
 		}
 		body["reasoning"] = reasoning
+	} else if p.cfg.RequireReasoning {
+		body["reasoning"] = map[string]any{"effort": "low", "summary": "auto"}
 	}
 	if key := responsesPromptCacheKey(req.Messages); key != "" {
 		body["prompt_cache_key"] = key
@@ -96,6 +101,13 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if p.cfg.IncludeReasoning {
 		body["include"] = []string{"reasoning.encrypted_content"}
 	}
+	if req.Model.Temperature != nil && !thinkingEnabled(req.Thinking) {
+		body["temperature"] = *req.Model.Temperature
+	}
+	if req.Model.TopP != nil {
+		body["top_p"] = *req.Model.TopP
+	}
+	mergeExtraBody(body, req.Model)
 	headers := map[string]string{}
 	if p.cfg.APIKey != "" {
 		if p.cfg.Azure {
@@ -107,6 +119,7 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
+	headers = applyModelHeaders(headers, req.Model)
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
 	resp, err := p.http.doJSON(streamCtx, "POST", responsesRequestURL(p.cfg, req.Model.ID), headers, body, true)
@@ -114,6 +127,7 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		return ProviderResult{}, err
 	}
 	firstIdle, steadyIdle := openAIIdle(p.cfg, req.IdleTimeout)
+	headersSeen := flattenHeaders(resp.Header)
 	idleBody := newIdleReader(resp.Body, streamCancel, firstIdle, steadyIdle)
 	defer idleBody.Close()
 
@@ -297,7 +311,7 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if stop == "" {
 		stop = "end_turn"
 	}
-	return ProviderResult{StopReason: stop, Usage: usage}, nil
+	return ProviderResult{StopReason: stop, Usage: usage, Headers: headersSeen}, nil
 }
 
 func responsesInput(messages []WireMessage, supportsImages bool) ([]map[string]any, error) {

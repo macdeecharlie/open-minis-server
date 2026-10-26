@@ -43,6 +43,12 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if effort := openAIReasoningEffortFor(p.cfg.BaseURL, req.Model, req.Thinking); effort != "" {
 		body["reasoning_effort"] = effort
 	}
+	if req.Model.Temperature != nil && !thinkingEnabled(req.Thinking) {
+		body["temperature"] = *req.Model.Temperature
+	}
+	if req.Model.TopP != nil {
+		body["top_p"] = *req.Model.TopP
+	}
 	body["stream_options"] = map[string]any{"include_usage": true}
 
 	headers := map[string]string{}
@@ -56,6 +62,8 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
+	headers = applyModelHeaders(headers, req.Model)
+	mergeExtraBody(body, req.Model)
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
 	resp, err := p.http.doJSON(streamCtx, "POST", p.endpoint("chat/completions", req.Model.ID), headers, body, true)
@@ -63,6 +71,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		return ProviderResult{}, err
 	}
 	firstIdle, steadyIdle := openAIIdle(p.cfg, req.IdleTimeout)
+	headersSeen := flattenHeaders(resp.Header)
 	idleBody := newIdleReader(resp.Body, streamCancel, firstIdle, steadyIdle)
 	defer idleBody.Close()
 
@@ -255,7 +264,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if stop == "" {
 		stop = "end_turn"
 	}
-	return ProviderResult{StopReason: stop, Usage: usage}, nil
+	return ProviderResult{StopReason: stop, Usage: usage, Headers: headersSeen}, nil
 }
 
 func mapOpenAIStop(s string) string {

@@ -95,6 +95,7 @@ type ProviderEvent struct {
 type ProviderResult struct {
 	StopReason string
 	Usage      Usage
+	Headers    map[string]string
 }
 
 type ToolCall struct {

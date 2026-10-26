@@ -28,6 +28,12 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if cfg := geminiThinkingConfig(req.Model.ID, req.Thinking); cfg != nil {
 		generation["thinkingConfig"] = cfg
 	}
+	if req.Model.Temperature != nil {
+		generation["temperature"] = *req.Model.Temperature
+	}
+	if req.Model.TopP != nil {
+		generation["topP"] = *req.Model.TopP
+	}
 	body := map[string]any{
 		"contents":         contents,
 		"generationConfig": generation,
@@ -55,6 +61,8 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
+	headers = applyModelHeaders(headers, req.Model)
+	mergeExtraBody(body, req.Model)
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
 	resp, err := p.http.doJSON(streamCtx, "POST", reqURL, headers, body, true)
@@ -62,6 +70,7 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 		return ProviderResult{}, err
 	}
 	steadyIdle := p.cfg.idleTimeout()
+	headersSeen := flattenHeaders(resp.Header)
 	idleBody := newIdleReader(resp.Body, streamCancel, steadyIdle, steadyIdle)
 	defer idleBody.Close()
 
@@ -176,7 +185,7 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if usage.LatestContextTokens == 0 {
 		usage.LatestContextTokens = usage.InputTokens + usage.CacheReadInputTokens
 	}
-	return ProviderResult{StopReason: stop, Usage: usage}, nil
+	return ProviderResult{StopReason: stop, Usage: usage, Headers: headersSeen}, nil
 }
 
 func mapGeminiStop(s string) string {

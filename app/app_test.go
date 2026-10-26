@@ -2766,3 +2766,61 @@ func TestOpenAIChatPathOverride(t *testing.T) {
 		t.Fatalf("path = %q", path)
 	}
 }
+
+func TestModelOverridesOnWire(t *testing.T) {
+	var body map[string]any
+	var header string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header = r.Header.Get("X-Model")
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	temp, topP := 0.2, 0.8
+	p := &openAIProvider{cfg: &Provider{Kind: "openai", BaseURL: upstream.URL, APIKey: "k"}, http: newProviderHTTP()}
+	_, err := p.Stream(context.Background(), ProviderRequest{
+		Model: &Model{
+			ID: "m", Temperature: &temp, TopP: &topP,
+			Headers:   map[string]string{"X-Model": "yes"},
+			ExtraBody: json.RawMessage(`{"custom_knob":true,"temperature":0.9}`),
+		},
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	}, func(ProviderEvent) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header != "yes" || body["temperature"] != 0.9 || body["top_p"] != 0.8 || body["custom_knob"] != true {
+		t.Fatalf("header=%q body=%+v", header, body)
+	}
+}
+
+func TestProviderQuotaHeadersForwarded(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-codex-primary-used-percent", "42")
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer upstream.Close()
+	_, ts := testServer(t, "mock")
+	frames := runSSE(t, ts, RunRequest{
+		SessionID: "sess-quota", RunID: "run-quota", Model: "local-model", Headless: true,
+		Providers: []Provider{{
+			ID: "inst-1", Kind: "openai", BaseURL: upstream.URL, APIKey: "k",
+			Models: []Model{{ID: "local-model"}},
+		}},
+		Messages: []WireMessage{{Role: "user", Parts: []WirePart{{Type: "text", Text: "hi"}}}},
+	})
+	found := false
+	for _, f := range frames {
+		if f.Event == "provider_headers" {
+			h, _ := f.Data["headers"].(map[string]any)
+			if f.Data["provider"] == "inst-1" && h["x-codex-primary-used-percent"] == "42" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("quota headers missing: %+v", frames)
+	}
+}

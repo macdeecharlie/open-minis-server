@@ -671,6 +671,22 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 				break
 			}
 		}
+		if streamErr == nil && len(pres.Headers) > 0 {
+			run.emit("provider_headers", map[string]any{
+				"provider": attempts[chosenAttempt].provider.ID,
+				"model":    attempts[chosenAttempt].model.ID,
+				"headers":  pres.Headers,
+			})
+		} else if streamErr != nil {
+			var ue *upstreamError
+			if errors.As(streamErr, &ue) && len(ue.Headers) > 0 {
+				run.emit("provider_headers", map[string]any{
+					"provider": attempts[startingAttempt].provider.ID,
+					"model":    attempts[startingAttempt].model.ID,
+					"headers":  ue.Headers,
+				})
+			}
+		}
 		previousAttempt := startingAttempt
 		startingAttempt = chosenAttempt
 		// Tell the user once per switch, not on every later turn that keeps

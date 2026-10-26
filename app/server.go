@@ -251,6 +251,24 @@ func (s *Server) handleAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A retried POST after a dropped connection carries the same run_id.
+	// Attach to the existing run instead of starting a second copy that would
+	// execute the same tools again.
+	s.runsMu.Lock()
+	existing := s.runs[req.RunID]
+	if existing == nil {
+		existing = s.finishedRuns[req.RunID]
+	}
+	s.runsMu.Unlock()
+	if existing != nil {
+		if existing.Session != "" && existing.Session != req.SessionID {
+			writeError(w, http.StatusConflict, "run_id belongs to another session")
+			return
+		}
+		s.streamRun(w, r, existing, 0)
+		return
+	}
+
 	run := newRun(context.Background(), req.RunID)
 	s.registerRun(run)
 	go func() {

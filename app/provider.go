@@ -77,14 +77,15 @@ func (p *providerHTTP) doJSON(ctx context.Context, method, url string, headers m
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
-		return nil, &upstreamError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
+		return nil, &upstreamError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b)), Headers: flattenHeaders(resp.Header)}
 	}
 	return resp, nil
 }
 
 type upstreamError struct {
-	Status int
-	Body   string
+	Status  int
+	Body    string
+	Headers map[string]string
 }
 
 func (e *upstreamError) Error() string {
@@ -297,4 +298,54 @@ func (r *idleReader) TimedOut() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.timedOut
+}
+
+func applyModelHeaders(headers map[string]string, model *Model) map[string]string {
+	if model == nil || len(model.Headers) == 0 {
+		return headers
+	}
+	out := make(map[string]string, len(headers)+len(model.Headers))
+	for k, v := range headers {
+		out[k] = v
+	}
+	for k, v := range model.Headers {
+		out[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
+	}
+	return out
+}
+
+// mergeExtraBody applies a model's provider-specific JSON knobs last, matching
+// the app's extraBodyParams behavior (they may override generated fields).
+func mergeExtraBody(body map[string]any, model *Model) {
+	if model == nil || len(model.ExtraBody) == 0 {
+		return
+	}
+	var extra map[string]any
+	if json.Unmarshal(model.ExtraBody, &extra) != nil {
+		return
+	}
+	for k, v := range extra {
+		body[k] = v
+	}
+}
+
+// flattenHeaders keeps response headers needed by the app's quota observers.
+// Only ratelimit-style headers are forwarded: other provider headers may
+// contain request ids or internal routing data the app does not need.
+func flattenHeaders(h http.Header) map[string]string {
+	out := map[string]string{}
+	for k, vals := range h {
+		lk := strings.ToLower(k)
+		if !strings.HasPrefix(lk, "anthropic-ratelimit-") && !strings.HasPrefix(lk, "x-codex-") &&
+			!strings.HasPrefix(lk, "x-ratelimit-") {
+			continue
+		}
+		if len(vals) > 0 {
+			out[lk] = vals[0]
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

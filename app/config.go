@@ -35,9 +35,11 @@ type Provider struct {
 	AuthType string `json:"auth_type,omitempty"`
 	// ChatPath overrides the OpenAI-compatible request path (GitHub Copilot
 	// serves /chat/completions at the API root instead of /v1/...).
-	ChatPath string `json:"chat_path,omitempty"`
+	ChatPath      string `json:"chat_path,omitempty"`
+	ResponsesPath string `json:"responses_path,omitempty"`
 	// IncludeReasoning requests encrypted reasoning items (Codex backend).
 	IncludeReasoning bool `json:"include_reasoning,omitempty"`
+	RequireReasoning bool `json:"require_reasoning,omitempty"`
 	// IdleTimeoutSec overrides the provider stream watchdog. 0 keeps the
 	// 10-minute default used by the official app's default setting.
 	IdleTimeoutSec int     `json:"idle_timeout_seconds,omitempty"`
@@ -45,13 +47,17 @@ type Provider struct {
 }
 
 type Model struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	ContextWindow     int      `json:"context_window,omitempty"`
-	MaxOutputTokens   int      `json:"max_output_tokens,omitempty"`
-	SupportsReasoning bool     `json:"supports_reasoning,omitempty"`
-	ReasoningEfforts  []string `json:"reasoning_efforts,omitempty"`
-	InputModalities   []string `json:"input_modalities,omitempty"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	ContextWindow     int               `json:"context_window,omitempty"`
+	MaxOutputTokens   int               `json:"max_output_tokens,omitempty"`
+	SupportsReasoning bool              `json:"supports_reasoning,omitempty"`
+	ReasoningEfforts  []string          `json:"reasoning_efforts,omitempty"`
+	InputModalities   []string          `json:"input_modalities,omitempty"`
+	Temperature       *float64          `json:"temperature,omitempty"`
+	TopP              *float64          `json:"top_p,omitempty"`
+	Headers           map[string]string `json:"headers,omitempty"`
+	ExtraBody         json.RawMessage   `json:"extra_body,omitempty"`
 }
 
 type UpdateConfig struct {

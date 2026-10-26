@@ -40,6 +40,12 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 			body["output_config"] = outputConfig
 		}
 	}
+	if req.Model.Temperature != nil && !thinkingEnabled(req.Thinking) && !anthropicUsesAdaptiveThinking(req.Model.ID) {
+		body["temperature"] = *req.Model.Temperature
+	}
+	if req.Model.TopP != nil && !thinkingEnabled(req.Thinking) {
+		body["top_p"] = *req.Model.TopP
+	}
 	if strings.TrimSpace(req.System) != "" {
 		// Cache the stable prompt head (identity, tool rules, skills). The
 		// runtime suffix is part of the same block; Anthropic caches the
@@ -84,6 +90,8 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	for k, v := range p.cfg.Headers {
 		headers[sanitizeProviderHeaderValue(k)] = sanitizeProviderHeaderValue(v)
 	}
+	headers = applyModelHeaders(headers, req.Model)
+	mergeExtraBody(body, req.Model)
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
 	resp, err := p.http.doJSON(streamCtx, "POST", anthropicEndpoint(p.cfg.BaseURL), headers, body, true)
@@ -91,6 +99,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		return ProviderResult{}, err
 	}
 	steadyIdle := p.cfg.idleTimeout()
+	headersSeen := flattenHeaders(resp.Header)
 	idleBody := newIdleReader(resp.Body, streamCancel, steadyIdle, steadyIdle)
 	defer idleBody.Close()
 
@@ -269,7 +278,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if hasTools {
 		stop = "tool_use"
 	}
-	return ProviderResult{StopReason: stop, Usage: usage}, nil
+	return ProviderResult{StopReason: stop, Usage: usage, Headers: headersSeen}, nil
 }
 
 func mapAnthropicStop(s string) string {
