@@ -62,7 +62,7 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 | `server/` | server bridge | implemented | SSE run protocol, tool results, file/terminal/session APIs, bootstrap, updater feed. |
 | `sandbox/` execution | server container | implemented / local fallback | Shell and file tools run in the dedicated **Debian 12** container as root. PRoot/rootfs files remain for device-bound shell commands (`android-*`, `minis-open`, `minis-scheduled`) and local mode, so their assets are correctly `local-fallback`. |
 | `sandbox/offload/*` | device | device-only | `android-*` native_offload handlers are device APIs, not server logic. |
-| `provider/` | server | partial | OpenAI-compatible, Anthropic and native Gemini streams; retries, fallback, thinking-effort clamping, tool-result images, audio input into OpenAI/Gemini, Gemini thought signatures and auxiliary translation. Missing: OAuth custody, Responses API, native Anthropic signed thinking blocks (disabled to avoid 400s), output modalities, model catalogs, quotas. |
+| `provider/` | server | partial | OpenAI-compatible, native OpenAI Responses (`kind: openai-responses`), Anthropic and Gemini streams; retries, fallback, thinking-effort clamping, tool-result images, audio input into OpenAI/Gemini, Gemini thought signatures and auxiliary translation. Missing: OAuth custody, native Anthropic signed thinking blocks (disabled to avoid 400s), output modalities, model catalogs, quotas. |
 | `agent/` | server + client | partial | Server owns the loop, prompt assembly, retries/fallback, empty-turn recovery, compaction/offload, tool-loop thresholds (10/20), helper wrap-up, replay, steering and cancel. Client still owns subagent orchestration, user-ask recovery and interrupted-tail repair. |
 | `scheduled/` | device trigger + server execution | implemented | Device AlarmManager triggers the app's headless runner, which calls the server agent loop; completion notifications stay on-device, exactly like the official app. The server also has an API scheduler for headless clients. |
 | `data/` context/prompt | server | implemented / partial | The server owns the base prompt, tool bullets, ordering and runtime suffix. The app sends structured switches and the already-selected skill/MCP/memory fragments. |
@@ -92,7 +92,7 @@ inventories. Excluded: `.git`, `deps/build`, build outputs and local SDK paths.
 ## Blocking parity gaps (ordered)
 
 1. **Provider parity.** OAuth token custody/refresh (Claude, Copilot, Gemini,
-   Kimi, xAI, OpenRouter, Antigravity), OpenAI Responses API, per-model thinking
+   Kimi, xAI, OpenRouter, Antigravity), per-model thinking
    rules/budgets, signed Anthropic thinking-block replay (currently disabled),
    Gemini thinking configuration, model catalogs and quota adapters. Native
    Anthropic/Gemini auxiliary calls are translated.

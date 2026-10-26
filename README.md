@@ -121,7 +121,7 @@ Copy `config.example.json` to `/data/config.json` and set:
 | `public_url` | Public HTTPS origin; used for update asset URLs. |
 | `auth_token` | Bearer token the Android app sends. Long random value. |
 | `default_model` | Model used when a request does not name one. |
-| `providers[]` | `kind` is `openai`, `anthropic` or `mock`. |
+| `providers[]` | `kind` is `openai`, `openai-responses`, `anthropic`, `gemini` or `mock`. |
 | `providers[].api_key_env` | Read the key from this environment variable instead of storing it in JSON. |
 | `update.repo` | Private Android repository (`owner/repo`) holding APK releases. |
 | `update.token_env` | Environment variable holding a GitHub token with read access to that repo. |
