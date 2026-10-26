@@ -1702,7 +1702,7 @@ func TestAudioInputMapping(t *testing.T) {
 	}
 	if _, err := anthropicMessages([]WireMessage{{Role: "user", Parts: []WirePart{
 		{Type: "audio", Format: "wav", Data: "YWJj"},
-	}}}); err == nil {
+	}}}, false); err == nil {
 		t.Fatal("Anthropic audio should fail visibly")
 	}
 }
@@ -1742,7 +1742,7 @@ func TestToolResultImageMapping(t *testing.T) {
 	if _, err := openAIMessages([]WireMessage{msg}, false, false); err != nil {
 		t.Fatal(err)
 	}
-	amsgs, err := anthropicMessages([]WireMessage{msg})
+	amsgs, err := anthropicMessages([]WireMessage{msg}, false)
 	if err != nil || !strings.Contains(fmt.Sprint(amsgs), "image") {
 		t.Fatalf("Anthropic tool image missing: %v err=%v", amsgs, err)
 	}
@@ -2040,5 +2040,23 @@ func TestGeminiThinkingConfig(t *testing.T) {
 	}
 	if geminiThinkingConfig("gemini-2.5-pro", "off") != nil {
 		t.Fatal("off should omit thinking config")
+	}
+}
+
+func TestAnthropicUnsignedThinkingEcho(t *testing.T) {
+	msgs := []WireMessage{{Role: "assistant", ReasoningContent: "thought", Parts: []WirePart{{Type: "text", Text: "answer"}}}}
+	with, err := anthropicMessages(msgs, true)
+	if err != nil || !strings.Contains(fmt.Sprint(with), "thinking") {
+		t.Fatalf("echo missing: %v err=%v", with, err)
+	}
+	without, err := anthropicMessages(msgs, false)
+	if err != nil || strings.Contains(fmt.Sprint(without), "thought") {
+		t.Fatalf("unsigned thinking leaked to native Anthropic: %v err=%v", without, err)
+	}
+	if anthropicEchoesUnsignedThinking("https://api.anthropic.com", &Model{SupportsReasoning: true}) {
+		t.Fatal("native Anthropic must not echo unsigned thinking")
+	}
+	if !anthropicEchoesUnsignedThinking("https://proxy.example/v1", &Model{SupportsReasoning: true}) {
+		t.Fatal("custom Anthropic proxy should echo unsigned thinking")
 	}
 }

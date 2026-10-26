@@ -15,7 +15,7 @@ type anthropicProvider struct {
 }
 
 func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emit func(ProviderEvent) error) (ProviderResult, error) {
-	msgs, err := anthropicMessages(req.Messages)
+	msgs, err := anthropicMessages(req.Messages, anthropicEchoesUnsignedThinking(p.cfg.BaseURL, req.Model))
 	if err != nil {
 		return ProviderResult{}, err
 	}
@@ -254,12 +254,20 @@ func mapAnthropicStop(s string) string {
 	}
 }
 
-func anthropicMessages(msgs []WireMessage) ([]map[string]any, error) {
+func anthropicMessages(msgs []WireMessage, echoReasoning bool) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
 		case "assistant":
 			content := []map[string]any{}
+			if echoReasoning {
+				// Anthropic-compatible proxies that reason with unsigned
+				// interleaved thinking (DeepSeek/GLM/Kimi) require the prior
+				// block to be replayed. Native api.anthropic.com verifies a
+				// signature and rejects unsigned blocks, so this is gated on a
+				// custom base URL.
+				content = append(content, map[string]any{"type": "thinking", "thinking": m.ReasoningContent})
+			}
 			for _, part := range m.Parts {
 				switch part.Type {
 				case "text":
@@ -349,4 +357,12 @@ func anthropicThinkingBudget(thinking string) int {
 	default:
 		return 0
 	}
+}
+
+func anthropicEchoesUnsignedThinking(baseURL string, model *Model) bool {
+	if model == nil || !model.SupportsReasoning {
+		return false
+	}
+	base := strings.ToLower(strings.TrimSpace(baseURL))
+	return base != "" && !strings.Contains(base, "api.anthropic.com")
 }
