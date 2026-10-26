@@ -90,7 +90,8 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
+	steadyIdle := p.cfg.idleTimeout()
+	idleBody := newIdleReader(resp.Body, streamCancel, steadyIdle, steadyIdle)
 	defer idleBody.Close()
 
 	type block struct {
@@ -167,7 +168,19 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 			return fmt.Errorf("parse Anthropic stream: %w", err)
 		}
 		if env.Type == "error" || env.Error.Message != "" {
-			return fmt.Errorf("provider error: %s", env.Error.Message)
+			msg := "provider error: " + env.Error.Message
+			switch env.Error.Type {
+			case "overloaded_error":
+				return &upstreamError{Status: 529, Body: msg}
+			case "api_error":
+				return &upstreamError{Status: 500, Body: msg}
+			case "rate_limit_error":
+				return &upstreamError{Status: 429, Body: msg}
+			case "authentication_error", "permission_error":
+				return &upstreamError{Status: 401, Body: msg}
+			default:
+				return fmt.Errorf("%s", msg)
+			}
 		}
 		switch env.Type {
 		case "message_start":
@@ -233,7 +246,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", steadyIdle)
 		}
 		return ProviderResult{}, err
 	}

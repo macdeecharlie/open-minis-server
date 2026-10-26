@@ -61,7 +61,8 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
+	steadyIdle := p.cfg.idleTimeout()
+	idleBody := newIdleReader(resp.Body, streamCancel, steadyIdle, steadyIdle)
 	defer idleBody.Close()
 
 	var usage Usage
@@ -101,7 +102,17 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 			return fmt.Errorf("parse Gemini stream: %w", err)
 		}
 		if chunk.Error != nil && chunk.Error.Message != "" {
-			return fmt.Errorf("Gemini error: %s", chunk.Error.Message)
+			msg := "Gemini error: " + chunk.Error.Message
+			switch chunk.Error.Status {
+			case "UNAVAILABLE", "INTERNAL":
+				return &upstreamError{Status: 503, Body: msg}
+			case "RESOURCE_EXHAUSTED":
+				return &upstreamError{Status: 429, Body: msg}
+			case "INVALID_ARGUMENT", "PERMISSION_DENIED", "UNAUTHENTICATED":
+				return &upstreamError{Status: 400, Body: msg}
+			default:
+				return fmt.Errorf("%s", msg)
+			}
 		}
 		if chunk.UsageMetadata != nil {
 			u := chunk.UsageMetadata
@@ -151,7 +162,7 @@ func (p *geminiProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", steadyIdle)
 		}
 		return ProviderResult{}, err
 	}

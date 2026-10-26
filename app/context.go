@@ -174,32 +174,44 @@ Do NOT translate or alter code snippets, file paths, identifiers, or error messa
 
 const maxInLoopCompactions = 3
 
-// transcriptForSummary renders messages as material to summarize, including
-// tool calls and their results (state changes the summary must preserve).
+// transcriptForSummary mirrors buildConversationTextForSummary: role-prefixed
+// lines with per-part caps, so a huge tool result cannot dominate the summary
+// request or the summary itself.
 func transcriptForSummary(messages []WireMessage) string {
 	var b strings.Builder
 	for _, m := range messages {
-		role := strings.ToUpper(m.Role)
+		role := strings.ToLower(m.Role)
+		appendLine := func(text string) {
+			text = strings.TrimSpace(text)
+			if text != "" {
+				b.WriteString(role)
+				b.WriteString(": ")
+				b.WriteString(text)
+				b.WriteByte('\n')
+			}
+		}
 		for _, p := range m.Parts {
 			switch p.Type {
 			case "text":
-				if p.Text != "" {
-					fmt.Fprintf(&b, "[%s]\n%s\n\n", role, p.Text)
-				}
+				appendLine(takeRunes(p.Text, 500))
 			case "tool_use":
-				fmt.Fprintf(&b, "[TOOL CALL %s %s]\n%s\n\n", p.Name, p.ID, string(p.Args))
+				b.WriteString(role + " [tool:" + p.Name + "]: " + takeRunes(string(p.Args), 200) + "\n")
 			case "tool_result":
-				status := "ok"
-				if p.IsError {
-					status = "error"
-				}
-				fmt.Fprintf(&b, "[TOOL RESULT %s %s %s]\n%s\n\n", p.Name, p.ID, status, p.Content)
+				b.WriteString(role + " [result:" + p.Name + "]: " + takeRunes(p.Content, 500) + "\n")
 			case "image":
-				fmt.Fprintf(&b, "[%s image %s]\n\n", role, p.Mime)
+				b.WriteString(role + " [image: " + p.Mime + "]\n")
 			}
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func takeRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 // summarizeMessages performs one compaction pass. If the provider rejects the

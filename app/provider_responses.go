@@ -107,7 +107,8 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
+	firstIdle, steadyIdle := openAIIdle(p.cfg, req.IdleTimeout)
+	idleBody := newIdleReader(resp.Body, streamCancel, firstIdle, steadyIdle)
 	defer idleBody.Close()
 
 	type callState struct {
@@ -262,7 +263,7 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", steadyIdle)
 		}
 		return ProviderResult{}, err
 	}

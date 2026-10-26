@@ -512,6 +512,7 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			part      *WirePart
 			args      strings.Builder
 			completed bool
+			invalid   bool
 		}
 		calls := map[string]*pendingCall{}
 		callOrder := []string{}
@@ -570,12 +571,13 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			for retry := 0; retry < 3; retry++ {
 				emitted = false
 				pres, streamErr = attempt.client.Stream(run.ctx, ProviderRequest{
-					Model:     attempt.model,
-					System:    system,
-					Messages:  messages,
-					Tools:     turnTools,
-					MaxTokens: maxTokens,
-					Thinking:  req.Thinking,
+					Model:       attempt.model,
+					System:      system,
+					Messages:    messages,
+					Tools:       turnTools,
+					MaxTokens:   maxTokens,
+					Thinking:    req.Thinking,
+					IdleTimeout: time.Duration(req.IdleTimeoutSec) * time.Second,
 				}, func(ev ProviderEvent) error {
 					emitted = true
 					switch ev.Kind {
@@ -696,6 +698,13 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 					if json.Valid([]byte(raw)) {
 						c.part.Args = json.RawMessage(raw)
 						c.completed = true
+					} else {
+						// Keep the call but replace its truncated argument with a
+						// placeholder; a synthetic error result below keeps the
+						// call/result pair balanced.
+						c.part.Args = json.RawMessage(`{}`)
+						c.completed = true
+						c.invalid = true
 					}
 				}
 				if !c.completed {
@@ -722,6 +731,14 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			stop = "end_turn"
 		}
 		if len(finalParts) == 0 {
+			if pres.StopReason == "refusal" {
+				run.emit("error", map[string]any{"message": "The model declined this request. Rephrase it or switch models; resending the same context will be declined again."})
+				return
+			}
+			if pres.StopReason == "max_tokens" {
+				run.emit("error", map[string]any{"message": "The response hit its output token limit before producing any text. Raise the model's output budget or shorten the request."})
+				return
+			}
 			// The official loop nudges an empty turn once instead of ending
 			// the run with a blank bubble. Retry with a user-side reminder and
 			// no tools forced; the second empty turn is a real failure.
@@ -752,6 +769,14 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 		}
 
 		if !hasTool {
+			if pres.StopReason == "refusal" {
+				run.emit("error", map[string]any{"message": "The model declined this request. Rephrase it or switch models; resending the same context will be declined again."})
+				return
+			}
+			if pres.StopReason == "max_tokens" {
+				run.emit("error", map[string]any{"message": "The response hit its output token limit, so the answer is incomplete. Ask for the remainder or raise the model's output budget."})
+				return
+			}
 			run.emit("done", map[string]any{"stop_reason": stop, "turns": turn + 1})
 			return
 		}
@@ -767,6 +792,18 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 			call := calls[id]
 			name := call.part.Name
 			args := call.part.Args
+			if call.invalid {
+				msg := "Error: this tool call's arguments were truncated or were not valid JSON, so the tool was not executed. Nothing was changed. Re-issue the call with smaller arguments"
+				if name == "file_write" || name == "file_edit" {
+					msg += "; for a large write, use several calls with append:true instead of one oversized call"
+				}
+				msg += "."
+				res := ToolResult{ID: id, Name: name, Title: "Invalid tool arguments", Executor: "server", IsError: true, Content: msg}
+				loop.record(name, args, "", msg)
+				run.emit("tool_result", res)
+				results = append(results, res)
+				continue
+			}
 			if pre := loop.check(name, args); pre.Level == "critical" {
 				res := ToolResult{ID: id, Name: name, Title: "Loop blocked", Executor: "server", IsError: true, Content: pre.Message}
 				loop.record(name, args, "", pre.Message)

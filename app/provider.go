@@ -16,12 +16,13 @@ import (
 )
 
 type ProviderRequest struct {
-	Model     *Model
-	System    string
-	Messages  []WireMessage
-	Tools     []ToolDef
-	MaxTokens int
-	Thinking  string
+	Model       *Model
+	System      string
+	Messages    []WireMessage
+	Tools       []ToolDef
+	MaxTokens   int
+	Thinking    string
+	IdleTimeout time.Duration
 }
 
 type ProviderClient interface {
@@ -41,7 +42,7 @@ func newProviderHTTP() *providerHTTP {
 		MaxIdleConnsPerHost:   8,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 75 * time.Second,
+		ResponseHeaderTimeout: 150 * time.Second,
 		ExpectContinueTimeout: time.Second,
 	}
 	return &providerHTTP{client: &http.Client{Transport: transport}}
@@ -220,15 +221,29 @@ var providerIdleTimeout = 10 * time.Minute
 type idleReader struct {
 	r        io.ReadCloser
 	cancel   context.CancelFunc
+	first    time.Duration
 	idle     time.Duration
+	gotBytes bool
 	timer    *time.Timer
 	mu       sync.Mutex
 	timedOut bool
 }
 
-func newIdleReader(r io.ReadCloser, cancel context.CancelFunc, idle time.Duration) *idleReader {
-	ir := &idleReader{r: r, cancel: cancel, idle: idle}
-	ir.timer = time.AfterFunc(idle, func() {
+func providerRequestIdle(cfg *Provider, req ProviderRequest) time.Duration {
+	if req.IdleTimeout > 0 {
+		return req.IdleTimeout
+	}
+	return cfg.idleTimeout()
+}
+
+// newIdleReader distinguishes the time-to-first-byte budget from the gap
+// allowed between subsequent chunks, mirroring the app's response idle timeout.
+func newIdleReader(r io.ReadCloser, cancel context.CancelFunc, first, idle time.Duration) *idleReader {
+	if first <= 0 {
+		first = idle
+	}
+	ir := &idleReader{r: r, cancel: cancel, first: first, idle: idle}
+	ir.timer = time.AfterFunc(first, func() {
 		ir.mu.Lock()
 		ir.timedOut = true
 		ir.mu.Unlock()
@@ -240,9 +255,37 @@ func newIdleReader(r io.ReadCloser, cancel context.CancelFunc, idle time.Duratio
 func (r *idleReader) Read(p []byte) (int, error) {
 	n, err := r.r.Read(p)
 	if n > 0 {
+		r.gotBytes = true
 		r.timer.Reset(r.idle)
 	}
 	return n, err
+}
+
+// openAIIdle resolves the app's response idle setting: 120s to first byte by
+// default, 600s between chunks, and both raised when the user's setting is
+// longer. Official app semantics; Anthropic/Gemini keep their fixed 10min.
+func openAIIdle(cfg *Provider, requested time.Duration) (time.Duration, time.Duration) {
+	if providerIdleTimeout != 10*time.Minute {
+		// Tests (and an explicit process-wide override) take precedence.
+		return providerIdleTimeout, providerIdleTimeout
+	}
+	first := 120 * time.Second
+	if requested > 0 {
+		first = requested
+	} else if cfg != nil && cfg.IdleTimeoutSec > 0 {
+		first = cfg.idleTimeout()
+	}
+	if first < 30*time.Second {
+		first = 30 * time.Second
+	}
+	if first > time.Hour {
+		first = time.Hour
+	}
+	steady := providerIdleTimeout
+	if first+30*time.Second > steady {
+		steady = first + 30*time.Second
+	}
+	return first, steady
 }
 
 func (r *idleReader) Close() error {

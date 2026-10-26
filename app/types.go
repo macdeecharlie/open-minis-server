@@ -61,6 +61,7 @@ type RunRequest struct {
 	MaxTurns         int            `json:"max_turns"`
 	MaxTokens        int            `json:"max_tokens"`
 	Thinking         string         `json:"thinking"`
+	IdleTimeoutSec   int            `json:"idle_timeout_seconds,omitempty"`
 	Headless         bool           `json:"headless,omitempty"`
 	Prompt           *PromptContext `json:"prompt_context,omitempty"`
 	Fallbacks        []string       `json:"fallbacks,omitempty"`

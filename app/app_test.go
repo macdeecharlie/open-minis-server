@@ -2658,3 +2658,22 @@ func TestContextOffloadHistory(t *testing.T) {
 		t.Fatalf("offload files = %+v err=%v", entries, err)
 	}
 }
+
+func TestOpenAIIdleTimeoutSemantics(t *testing.T) {
+	first, steady := openAIIdle(&Provider{}, 0)
+	if first != 120*time.Second || steady != 10*time.Minute {
+		t.Fatalf("defaults = %s/%s", first, steady)
+	}
+	first, steady = openAIIdle(&Provider{}, 1800*time.Second)
+	if first != 1800*time.Second || steady != 1830*time.Second {
+		t.Fatalf("long setting = %s/%s", first, steady)
+	}
+	first, steady = openAIIdle(&Provider{}, 120*time.Second)
+	if first != 120*time.Second || steady != 10*time.Minute {
+		t.Fatalf("short setting = %s/%s", first, steady)
+	}
+	first, steady = openAIIdle(&Provider{IdleTimeoutSec: 1800}, 0)
+	if first != 30*time.Minute || steady != 30*time.Minute+30*time.Second {
+		t.Fatalf("provider config = %s/%s", first, steady)
+	}
+}

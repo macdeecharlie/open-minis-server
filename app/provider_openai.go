@@ -62,7 +62,8 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	if err != nil {
 		return ProviderResult{}, err
 	}
-	idleBody := newIdleReader(resp.Body, streamCancel, p.cfg.idleTimeout())
+	firstIdle, steadyIdle := openAIIdle(p.cfg, req.IdleTimeout)
+	idleBody := newIdleReader(resp.Body, streamCancel, firstIdle, steadyIdle)
 	defer idleBody.Close()
 
 	type callState struct {
@@ -152,7 +153,17 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 			return fmt.Errorf("parse provider stream: %w", err)
 		}
 		if chunk.Error != nil && chunk.Error.Message != "" {
-			return fmt.Errorf("provider error: %s", chunk.Error.Message)
+			msg := "provider error: " + chunk.Error.Message
+			switch chunk.Error.Type {
+			case "server_error":
+				return &upstreamError{Status: 500, Body: msg}
+			case "rate_limit_error", "rate_limit_exceeded":
+				return &upstreamError{Status: 429, Body: msg}
+			case "invalid_request_error", "authentication_error":
+				return &upstreamError{Status: 400, Body: msg}
+			default:
+				return fmt.Errorf("%s", msg)
+			}
 		}
 		if chunk.Usage != nil {
 			prompt := chunk.Usage.PromptTokens
@@ -224,7 +235,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ProviderRequest, emit f
 	})
 	if err != nil {
 		if idleBody.TimedOut() {
-			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", p.cfg.idleTimeout())
+			return ProviderResult{}, fmt.Errorf("provider stream was idle for %s", steadyIdle)
 		}
 		return ProviderResult{}, err
 	}
