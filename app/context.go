@@ -477,6 +477,7 @@ func (s *Server) maybeCompact(run *Run, messages []WireMessage, system string, t
 	*compactions++
 	run.emit("compacted", map[string]any{
 		"summary":    summary,
+		"anchor":     anchor,
 		"messages":   len(messages) - len(compacted) + 1,
 		"tokens":     estimatedRequestTokens(system, compacted, tools),
 		"window":     window,
