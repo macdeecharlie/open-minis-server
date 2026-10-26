@@ -87,6 +87,14 @@ func buildSystemPrompt(pc *PromptContext, workspace string) string {
 	if pc.MemoryEnabled != nil {
 		memoryOn = *pc.MemoryEnabled
 	}
+	if pc.Headless {
+		// No paired app exists: every client-executed capability is
+		// unavailable, so the prompt must not advertise it.
+		memoryOn = false
+		pc.BrowserEnabled = false
+		pc.UserAskEnabled = false
+		pc.DelegationEnabled = false
+	}
 	memoryBullets := ""
 	if memoryOn {
 		memoryBullets = memoryWriteBullet

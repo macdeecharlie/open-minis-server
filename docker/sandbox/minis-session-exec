@@ -13,12 +13,16 @@ fi
 
 mount --make-rprivate /
 mkdir -p /var/minis/workspace /var/minis/attachments /var/minis/offloads \
-    /var/minis/browser /var/minis/mcp-servers
+    /var/minis/browser /var/minis/mcp-servers /var/minis/shared \
+    /var/minis/skills /var/minis/memory
 mount --bind "$MINIS_SESSION_ROOT/workspace" /var/minis/workspace
 mount --bind "$MINIS_SESSION_ROOT/attachments" /var/minis/attachments
 mount --bind "$MINIS_SESSION_ROOT/offloads" /var/minis/offloads
 mount --bind "$MINIS_SESSION_ROOT/browser" /var/minis/browser
 mount --bind /workspace/global/mcp-servers /var/minis/mcp-servers
+mount --bind /workspace/global/shared /var/minis/shared
+mount --bind /workspace/global/skills /var/minis/skills
+mount --bind /workspace/global/memory /var/minis/memory
 # Match the old virtual root: /workspace is this session's workspace, not the
 # container's sessions/global tree. Bind it after the MCP source has been
 # resolved so /var/minis/mcp-servers still points at the shared config.

@@ -46,7 +46,7 @@ RUN apt-get update \
         xz-utils \
         zip \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /workspace/sessions /workspace/global/mcp-servers /root \
+    && mkdir -p /workspace/sessions /workspace/global/mcp-servers /workspace/global/shared /workspace/global/skills /workspace/global/memory /root \
         /var/minis/workspace /var/minis/attachments /var/minis/offloads \
         /var/minis/browser /var/minis/mcp-servers
 

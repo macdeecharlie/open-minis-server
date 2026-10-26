@@ -18,6 +18,12 @@ import (
 
 const terminalScrollback = 1 << 20 // 1 MiB per terminal
 
+// An abandoned terminal (app killed, no reattach) must not hold a PTY and a
+// shell forever. The app closes its terminal explicitly on stop; this only
+// reaps shells that have had no stream and no input for the same 30-minute
+// window the official terminal UI treats as idle.
+const terminalIdleTTL = 30 * time.Minute
+
 // terminal keeps the PTY and its output independent of any one SSE
 // connection. A dropped mobile connection can reattach to the same shell and
 // resume from a byte offset instead of losing the session.
@@ -25,17 +31,19 @@ type terminal struct {
 	id      string
 	session string
 
-	mu     sync.Mutex
-	ptmx   *os.File
-	cmd    *exec.Cmd
-	cols   int
-	rows   int
-	dead   bool
-	wake   chan struct{}
-	outMu  sync.Mutex
-	out    []byte // scrollback; outAt is the absolute offset of out[0]
-	outAt  int64
-	onExit func()
+	mu       sync.Mutex
+	ptmx     *os.File
+	cmd      *exec.Cmd
+	cols     int
+	rows     int
+	dead     bool
+	streams  int
+	lastUsed time.Time
+	wake     chan struct{}
+	outMu    sync.Mutex
+	out      []byte // scrollback; outAt is the absolute offset of out[0]
+	outAt    int64
+	onExit   func()
 }
 
 type terminalManager struct {
@@ -46,7 +54,35 @@ type terminalManager struct {
 }
 
 func newTerminalManager(mountNS bool, workRoot string) *terminalManager {
-	return &terminalManager{terms: map[string]*terminal{}, mountNS: mountNS, workRoot: workRoot}
+	m := &terminalManager{terms: map[string]*terminal{}, mountNS: mountNS, workRoot: workRoot}
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for now := range ticker.C {
+			m.reapIdle(now)
+		}
+	}()
+	return m
+}
+
+// reapIdle closes terminals with no attached stream that have been idle past
+// terminalIdleTTL. Attached streams are never reaped.
+func (m *terminalManager) reapIdle(now time.Time) {
+	m.mu.Lock()
+	var idle []*terminal
+	for _, t := range m.terms {
+		t.mu.Lock()
+		stale := t.streams == 0 && now.Sub(t.lastUsed) > terminalIdleTTL
+		t.mu.Unlock()
+		if stale {
+			idle = append(idle, t)
+		}
+	}
+	m.mu.Unlock()
+	for _, t := range idle {
+		t.close()
+		m.remove(t.id)
+	}
 }
 
 func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, error) {
@@ -100,13 +136,14 @@ func (m *terminalManager) start(sessionID string, cols, rows int) (*terminal, er
 		return nil, err
 	}
 	t := &terminal{
-		id:      newID("term"),
-		session: sessionID,
-		ptmx:    ptmx,
-		cmd:     cmd,
-		cols:    cols,
-		rows:    rows,
-		wake:    make(chan struct{}, 1),
+		id:       newID("term"),
+		session:  sessionID,
+		ptmx:     ptmx,
+		cmd:      cmd,
+		cols:     cols,
+		rows:     rows,
+		wake:     make(chan struct{}, 1),
+		lastUsed: time.Now(),
 	}
 	// A new terminal for the same session replaces an abandoned shell from a
 	// previous app process instead of leaking it.
@@ -166,6 +203,8 @@ func (t *terminal) readLoop() {
 				t.outAt += int64(drop)
 			}
 			t.outMu.Unlock()
+			// touch takes t.mu: keep the same outMu -> mu order as snapshot.
+			t.touch()
 			t.signal()
 		}
 		if err != nil {
@@ -201,10 +240,33 @@ func (t *terminal) close() {
 	t.signal()
 }
 
+func (t *terminal) touch() {
+	t.mu.Lock()
+	t.lastUsed = time.Now()
+	t.mu.Unlock()
+}
+
+func (t *terminal) attach() {
+	t.mu.Lock()
+	t.streams++
+	t.lastUsed = time.Now()
+	t.mu.Unlock()
+}
+
+func (t *terminal) detach() {
+	t.mu.Lock()
+	if t.streams > 0 {
+		t.streams--
+	}
+	t.lastUsed = time.Now()
+	t.mu.Unlock()
+}
+
 func (t *terminal) write(data []byte) error {
 	t.mu.Lock()
 	ptmx := t.ptmx
 	t.mu.Unlock()
+	defer t.touch()
 	if ptmx == nil {
 		return fmt.Errorf("terminal closed")
 	}
@@ -222,6 +284,7 @@ func (t *terminal) resize(cols, rows int) error {
 		return fmt.Errorf("terminal closed")
 	}
 	t.cols, t.rows = cols, rows
+	t.lastUsed = time.Now()
 	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
@@ -272,6 +335,8 @@ func (a *sandboxAgent) streamTerminal(w http.ResponseWriter, r *http.Request, te
 	if !writeEvent("ready", map[string]any{"id": term.id, "session_id": term.session, "cols": cols, "rows": rows, "offset": after}) {
 		return
 	}
+	term.attach()
+	defer term.detach()
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {

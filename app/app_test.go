@@ -2364,9 +2364,80 @@ func TestBareAPIRunIsHeadless(t *testing.T) {
 			t.Fatal("bare API run waited for a device tool")
 		}
 		if f.Event == "tool_result" {
-			if f.Data["is_error"] != true || !strings.Contains(fmt.Sprint(f.Data["content"]), "paired Android app") {
+			if f.Data["is_error"] != true {
 				t.Fatalf("headless tool result = %+v", f.Data)
 			}
 		}
+	}
+}
+
+func TestTerminalIdleReaper(t *testing.T) {
+	m := newTerminalManager(false, t.TempDir())
+	now := time.Now()
+	idle := &terminal{id: "idle", lastUsed: now.Add(-time.Hour), wake: make(chan struct{}, 1)}
+	busy := &terminal{id: "busy", lastUsed: now.Add(-time.Hour), streams: 1, wake: make(chan struct{}, 1)}
+	active := &terminal{id: "active", lastUsed: now, wake: make(chan struct{}, 1)}
+	m.mu.Lock()
+	m.terms[idle.id] = idle
+	m.terms[busy.id] = busy
+	m.terms[active.id] = active
+	m.mu.Unlock()
+	m.reapIdle(now)
+	m.mu.Lock()
+	_, idleStill := m.terms["idle"]
+	_, busyStill := m.terms["busy"]
+	_, activeStill := m.terms["active"]
+	m.mu.Unlock()
+	if idleStill || !busyStill || !activeStill {
+		t.Fatalf("reaper result idle=%v busy=%v active=%v", idleStill, busyStill, activeStill)
+	}
+}
+
+func TestHeadlessPromptHidesDeviceTools(t *testing.T) {
+	prompt := buildSystemPrompt(&PromptContext{
+		Headless: true, BrowserEnabled: true, UserAskEnabled: true, DelegationEnabled: true,
+		MemoryEnabled: func() *bool { v := true; return &v }(),
+	}, "/var/minis/workspace")
+	for _, banned := range []string{"Android framework commands", "browser_use:", "memory_write:", "user_ask:", "subagent_task:"} {
+		if strings.Contains(prompt, banned) {
+			t.Fatalf("headless prompt advertises %q", banned)
+		}
+	}
+	if !strings.Contains(prompt, "Memory system (currently DISABLED)") {
+		t.Fatal("headless prompt should say memory is unavailable")
+	}
+	tools := serverToolsOnly([]ToolDef{
+		{Function: ToolFunction{Name: "shell_execute"}},
+		{Function: ToolFunction{Name: "browser_use"}},
+		{Function: ToolFunction{Name: "memory_get"}},
+	})
+	if len(tools) != 1 || tools[0].Function.Name != "shell_execute" {
+		t.Fatalf("headless tools = %+v", tools)
+	}
+}
+
+func TestGlobalStorePathsAreMapped(t *testing.T) {
+	dir := t.TempDir()
+	cfg := SandboxConfig{WorkRoot: filepath.Join(dir, "sessions"), GlobalRoot: filepath.Join(dir, "global")}
+	sb, err := NewSandbox(cfg, "sess-global")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{"/var/minis/shared", "/var/minis/skills", "/var/minis/memory"} {
+		path := root + "/demo.txt"
+		if err := sb.Upload(path, []byte("global")); err != nil {
+			t.Fatalf("upload %s: %v", path, err)
+		}
+		got, err := sb.ReadFile(path, 1, 0, 100)
+		if err != nil || !strings.Contains(got, "global") {
+			t.Fatalf("read %s = %q err=%v", path, got, err)
+		}
+		entries, err := sb.ListDir(root)
+		if err != nil || len(entries) == 0 {
+			t.Fatalf("list %s = %+v err=%v", root, entries, err)
+		}
+	}
+	if err := sb.Upload("/var/minis/anything/escape.txt", []byte("x")); err == nil {
+		t.Fatal("unknown global path should be confined")
 	}
 }

@@ -368,6 +368,9 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	maxTokens := req.MaxTokens
 
 	tools := s.buildTools(req.Tools)
+	if run.Headless {
+		tools = serverToolsOnly(tools)
+	}
 	workspaceForPrompt := sb.Workspace()
 	if s.cfg.Sandbox.MountNamespace || s.cfg.Sandbox.Mode == "agent" {
 		workspaceForPrompt = "/var/minis/workspace"
@@ -862,6 +865,16 @@ func (s *Server) runAgent(req RunRequest, run *Run) {
 	}
 	run.emit("error", map[string]any{"message": fmt.Sprintf("maximum agent turns reached (%d)", maxTurns)})
 	run.emit("done", map[string]any{"stop_reason": "max_turns", "turns": maxTurns})
+}
+
+func serverToolsOnly(tools []ToolDef) []ToolDef {
+	out := make([]ToolDef, 0, len(tools))
+	for _, t := range tools {
+		if serverToolNames[t.Function.Name] {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func toolIsKnown(name string, tools []ToolDef) bool {

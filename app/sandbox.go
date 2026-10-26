@@ -80,7 +80,12 @@ func NewSandbox(cfg SandboxConfig, sessionID string) (*Sandbox, error) {
 		uid:         -1,
 		gid:         -1,
 	}
-	for _, d := range []string{s.root, s.workspace, s.attachments, filepath.Join(root, "offloads"), filepath.Join(root, "browser"), filepath.Join(globalRoot, "mcp-servers")} {
+	for _, d := range []string{
+		s.root, s.workspace, s.attachments,
+		filepath.Join(root, "offloads"), filepath.Join(root, "browser"),
+		filepath.Join(globalRoot, "mcp-servers"), filepath.Join(globalRoot, "shared"),
+		filepath.Join(globalRoot, "skills"), filepath.Join(globalRoot, "memory"),
+	} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, fmt.Errorf("create workspace: %w", err)
 		}
@@ -149,6 +154,12 @@ func (s *Sandbox) virtualPath(p string) (string, error) {
 		mapped = filepath.Join(s.root, "browser", strings.TrimPrefix(p, "/var/minis/browser"))
 	case p == "/var/minis/mcp-servers" || strings.HasPrefix(p, "/var/minis/mcp-servers/"):
 		mapped = filepath.Join(s.globalRoot, "mcp-servers", strings.TrimPrefix(p, "/var/minis/mcp-servers"))
+	case p == "/var/minis/shared" || strings.HasPrefix(p, "/var/minis/shared/"):
+		mapped = filepath.Join(s.globalRoot, "shared", strings.TrimPrefix(p, "/var/minis/shared"))
+	case p == "/var/minis/skills" || strings.HasPrefix(p, "/var/minis/skills/"):
+		mapped = filepath.Join(s.globalRoot, "skills", strings.TrimPrefix(p, "/var/minis/skills"))
+	case p == "/var/minis/memory" || strings.HasPrefix(p, "/var/minis/memory/"):
+		mapped = filepath.Join(s.globalRoot, "memory", strings.TrimPrefix(p, "/var/minis/memory"))
 	case p == "/workspace" || strings.HasPrefix(p, "/workspace/"):
 		mapped = filepath.Join(s.workspace, strings.TrimPrefix(p, "/workspace"))
 	case filepath.IsAbs(p):
@@ -210,6 +221,9 @@ func (s *Sandbox) rewriteCommand(cmd string) string {
 		"/var/minis/offloads", filepath.Join(s.root, "offloads"),
 		"/var/minis/browser", filepath.Join(s.root, "browser"),
 		"/var/minis/mcp-servers", filepath.Join(s.globalRoot, "mcp-servers"),
+		"/var/minis/shared", filepath.Join(s.globalRoot, "shared"),
+		"/var/minis/skills", filepath.Join(s.globalRoot, "skills"),
+		"/var/minis/memory", filepath.Join(s.globalRoot, "memory"),
 		"/workspace", s.workspace,
 	)
 	return replacer.Replace(cmd)
