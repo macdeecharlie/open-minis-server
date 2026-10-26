@@ -189,13 +189,27 @@ func (p *responsesProvider) Stream(ctx context.Context, req ProviderRequest, emi
 		case "response.failed":
 			sawTerminal = true
 			msg := "response.failed"
+			code := ""
 			if ev.Response.Error != nil {
+				code = ev.Response.Error.Code
 				if ev.Response.Error.Message != "" {
 					msg = ev.Response.Error.Message
 				}
-				if ev.Response.Error.Code != "" {
-					msg = "[" + ev.Response.Error.Code + "] " + msg
+				if code != "" {
+					msg = "[" + code + "] " + msg
 				}
+			}
+			status := 0
+			switch code {
+			case "server_error":
+				status = 500
+			case "rate_limit_exceeded":
+				status = 429
+			case "context_length_exceeded":
+				status = 400
+			}
+			if status > 0 {
+				return &upstreamError{Status: status, Body: msg}
 			}
 			return fmt.Errorf("%s", msg)
 		case "error":
