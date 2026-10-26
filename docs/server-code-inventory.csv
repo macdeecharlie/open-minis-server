@@ -1,15 +1,15 @@
 path,lines,role
 .github/workflows/test.yml,24,CI
 .gitignore,18,server/deployment file
-README.md,215,server/deployment file
+README.md,216,server/deployment file
 app/admin.go,183,admin config endpoints
 app/agent.go,873,"agent loop, retries, fallback, tool dispatch, replay/steer"
 app/api_cli.go,595,minis-* CLI API
 app/api_files.go,146,file API
 app/api_openai.go,325,auxiliary OpenAI-compatible proxy/translation
 app/api_scheduled.go,53,scheduled task API
-app/api_terminal.go,83,terminal API proxy
-app/app_test.go,1832,test suite
+app/api_terminal.go,91,terminal API proxy
+app/app_test.go,1967,test suite
 app/cli.go,666,minis-* CLI implementations
 app/config.go,295,configuration and validation
 app/context.go,523,"context estimator, compaction, offload, image budget, tool-pair repair"
@@ -30,11 +30,11 @@ app/provider_gemini.go,237,"Gemini wire, thought signatures, audio"
 app/provider_mock.go,129,offline test provider
 app/provider_openai.go,401,OpenAI-compatible wire
 app/sandbox.go,673,"local/agent sandbox, mount namespace, file tools"
-app/sandbox_agent.go,506,sandbox container API
+app/sandbox_agent.go,507,sandbox container API
 app/sandbox_remote.go,299,server to sandbox client
-app/sandbox_terminal.go,309,PTY terminal
+app/sandbox_terminal.go,371,PTY terminal
 app/scheduled.go,474,server scheduler and headless runner
-app/server.go,485,"HTTP routes, SSE, sessions, files, terminal proxy, config"
+app/server.go,486,"HTTP routes, SSE, sessions, files, terminal proxy, config"
 app/store.go,348,append-only session store
 app/tools.go,738,"tool schemas, routing, execution, minis URLs"
 app/types.go,146,wire/config/session types
@@ -110,9 +110,9 @@ docker/sandbox/mcp-cli/lib/utils/__init__.py,0,bundled MCP client (from the offi
 docker/sandbox/mcp-cli/lib/utils/config.py,196,bundled MCP client (from the official assets)
 docker/sandbox/mcp-cli/lib/utils/deps.py,70,bundled MCP client (from the official assets)
 docker/sandbox/minis-session-exec,27,sandbox image and deployment
-docs/agent-protocol.md,182,documentation
+docs/agent-protocol.md,196,documentation
 docs/architecture.md,123,documentation
-docs/parity-matrix.md,191,documentation
-docs/verification.md,93,documentation
+docs/parity-matrix.md,193,documentation
+docs/verification.md,92,documentation
 scripts/android_inventory.py,338,inventory tooling
 scripts/server_inventory.py,96,inventory tooling
